@@ -1,83 +1,137 @@
-// frontend/src/App.jsx
 import { useState, useEffect } from 'react'
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
+import {
+  BrowserRouter as Router,
+  Routes,
+  Route,
+  Navigate,
+  Outlet,
+} from 'react-router-dom'
 import { supabase } from './supabaseClient'
 
-// Import components
+// ── Page imports ─────────────────────────────────────────────
+import Landing from './pages/Landing'
 import Login from './pages/Login'
-import ProtectedRoute from './components/ProtectedRoute'
-
-import Questioning from './pages/Questioning'
 import Dashboard from './pages/Dashboard'
-import MainLayout from './layouts/MainLayout'
+import AiPage from './pages/AiPage'
+import UpdatePage from './pages/UpdatePage'
+import SettingsPage from './pages/SettingsPage'
+import HelpPage from './pages/HelpPage'
+import { useLang } from './contexts/LangContext'
+import { t } from './i18n'
+import Sidebar from './components/Sidebar'
 
-// --- CÁC TRANG TẠM THỜI (Placeholders) ---
-const LandingPage = () => <div className="p-10 text-center"><h1>Landing Page</h1><a href="/login" className="text-blue-500 underline">Đăng nhập ngay</a></div>
+// ============================================================
+// MAIN LAYOUT  — sidebar + content side by side (inline styles)
+// ============================================================
+function MainLayout({ session, handleLogout }) {
+  return (
+    <div style={{
+      display: 'flex',
+      flexDirection: 'row',
+      height: '100vh',
+      width: '100%',
+      overflow: 'hidden',
+      background: 'var(--bg-color)',
+    }}>
+      <Sidebar session={session} handleLogout={handleLogout} />
+      <main style={{
+        flex: 1,
+        overflowY: 'auto',
+        padding: '32px',
+        minWidth: 0,           /* prevents flex child from overflowing */
+      }}>
+        <Outlet />
+      </main>
+    </div>
+  )
+}
 
+// ============================================================
+// PROTECTED ROUTE
+// ============================================================
+function ProtectedRoute({ session, children }) {
+  if (!session) return <Navigate to="/login" replace />
+  return children
+}
+
+// ============================================================
+// APP ROOT
+// ============================================================
 export default function App() {
   const [session, setSession] = useState(null)
   const [loading, setLoading] = useState(true)
+  const { lang } = useLang()
 
   useEffect(() => {
-    // 1. Lấy session hiện tại khi web vừa load
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session)
       setLoading(false)
     })
-
-    // 2. Lắng nghe sự thay đổi (đăng nhập, đăng xuất)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session)
     })
-
     return () => subscription.unsubscribe()
   }, [])
 
-  if (loading) return <div className="flex items-center justify-center h-screen">Đang tải...</div>
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
+    window.location.href = '/login'
+  }
+
+  if (loading) {
+    return (
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        height: '100vh', background: '#0a1a12',
+        fontFamily: "'Inter', system-ui, sans-serif",
+      }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{
+            width: 40, height: 40, borderRadius: '50%',
+            border: '3px solid rgba(16,185,129,0.2)',
+            borderTopColor: '#10b981',
+            animation: 'spin 0.8s linear infinite',
+            margin: '0 auto 12px',
+          }} />
+          <span style={{ color: '#4ade80', fontSize: 13, fontFamily: "'DM Mono', monospace" }}>
+            {t('login_loading', lang)}
+          </span>
+        </div>
+        <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+      </div>
+    )
+  }
 
   return (
     <Router>
       <Routes>
-        {/* Public Routes (Ai cũng vào được) */}
-        <Route path="/" element={<LandingPage />} />
+
+        {/* ── PUBLIC ── */}
+        <Route path="/" element={<Landing />} />
         <Route
           path="/login"
           element={session ? <Navigate to="/dashboard" /> : <Login />}
         />
 
-        {/* Protected Routes (Phải đăng nhập mới vào được) */}
-        <Route
-          path="/questioning"
-          element={
-            <ProtectedRoute session={session}>
-              <Questioning session={session} />
-            </ProtectedRoute>
-          }
-        />
-
+        {/* ── DASHBOARD (protected, with sidebar) ── */}
         <Route
           path="/dashboard"
           element={
             <ProtectedRoute session={session}>
-              <MainLayout
-                session={session}
-                handleLogout={async () => {
-                  await supabase.auth.signOut();
-                  window.location.href = '/login';
-                }}
-              />
+              <MainLayout session={session} handleLogout={handleLogout} />
             </ProtectedRoute>
           }
         >
           <Route index element={<Dashboard />} />
-          <Route path="ai" element={<div><h2 className="text-2xl font-bold">Khu vực AI</h2><p>Giao diện chat AI sẽ nằm ở đây.</p></div>} />
-          <Route path="settings" element={<h2 className="text-2xl font-bold">Cài đặt</h2>} />
-          <Route path="update" element={<h2 className="text-2xl font-bold">Cập nhật hệ thống</h2>} />
-          <Route path="help" element={<h2 className="text-2xl font-bold">Trung tâm Trợ giúp</h2>} />
+          <Route path="ai" element={<AiPage />} />
+          <Route path="update" element={<UpdatePage />} />
+          <Route path="settings" element={<SettingsPage />} />
+          <Route path="help" element={<HelpPage />} />
         </Route>
 
-        {/* Nếu gõ sai URL, đá về trang chủ */}
+        {/* ── FALLBACK ── */}
         <Route path="*" element={<Navigate to="/" />} />
+
       </Routes>
     </Router>
   )

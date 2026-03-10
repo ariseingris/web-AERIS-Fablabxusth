@@ -1,10 +1,7 @@
-import { Link } from "react-router-dom"
+import { Navigate } from 'react-router-dom'
 
+// Skip page simply redirects straight to the dashboard.
+// Can be used as a route: <Route path="/skip" element={<Skip />} />
 export default function Skip() {
-    return (
-        <div>
-            <h1>Skip Page</h1>
-            <Link to="/dashboard">Go to Dashboard</Link>
-        </div>
-    )
+  return <Navigate to="/dashboard" replace />
 }

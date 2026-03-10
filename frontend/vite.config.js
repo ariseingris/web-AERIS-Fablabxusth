@@ -9,5 +9,11 @@ export default defineConfig({
     watch: {
       usePolling: true // Rất cần thiết khi dùng Docker để code tự động update khi bạn lưu file
     }
+  },
+  test: {
+    globals: true,
+    environment: 'jsdom',
+    setupFiles: './src/setupTests.js',
+    css: true,
   }
 })
