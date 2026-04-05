@@ -1,0 +1,10 @@
+# Ignore node_modules in all packages — never read these
+backend/node_modules/
+frontend/node_modules/
+
+# Build output
+frontend/dist/
+
+# Lock files (use package.json instead)
+backend/package-lock.json
+frontend/package-lock.json

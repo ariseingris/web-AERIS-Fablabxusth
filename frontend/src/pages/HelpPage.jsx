@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useLang } from '../contexts/LangContext'
 import { t } from '../i18n'
+import { useColors } from '../hooks/useColors'
 
 const FAQS = [
     {
@@ -36,11 +37,11 @@ const DOCS = [
     { icon: '🔐', title: 'Bảo mật & Quyền riêng tư', desc: 'Chính sách bảo mật, cách bảo vệ tài khoản và quyền GDPR của bạn.' },
 ]
 
-function FaqItem({ q, a }) {
+function FaqItem({ q, a, c }) {
     const [open, setOpen] = useState(false)
     return (
         <div style={{
-            borderBottom: '1px solid rgba(255,255,255,0.06)',
+            borderBottom: `1px solid ${c.divider}`,
             overflow: 'hidden',
         }}>
             <button onClick={() => setOpen(o => !o)} style={{
@@ -49,13 +50,13 @@ function FaqItem({ q, a }) {
                 display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12,
                 fontFamily: 'inherit',
             }}>
-                <span style={{ fontSize: 15, fontWeight: 500, color: '#d1fae5' }}>{q}</span>
+                <span style={{ fontSize: 15, fontWeight: 500, color: c.body }}>{q}</span>
                 <div style={{
                     width: 24, height: 24, borderRadius: '50%', flexShrink: 0,
-                    background: open ? 'rgba(16,185,129,0.2)' : 'rgba(255,255,255,0.05)',
-                    border: `1px solid ${open ? 'rgba(16,185,129,0.3)' : 'rgba(255,255,255,0.1)'}`,
+                    background: open ? c.accentBgStrong : c.inputBg,
+                    border: `1px solid ${open ? c.cardBorderHover : c.inputBorder}`,
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    color: open ? '#34d399' : '#4ade80', transition: 'all 0.2s',
+                    color: c.accent, transition: 'all 0.2s',
                     transform: open ? 'rotate(45deg)' : 'none',
                 }}>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
@@ -67,7 +68,7 @@ function FaqItem({ q, a }) {
                 maxHeight: open ? 200 : 0, overflow: 'hidden',
                 transition: 'max-height 0.3s ease',
             }}>
-                <p style={{ fontSize: 14, color: '#86efac', lineHeight: 1.7, margin: '0 0 16px', paddingRight: 36 }}>{a}</p>
+                <p style={{ fontSize: 14, color: c.muted, lineHeight: 1.7, margin: '0 0 16px', paddingRight: 36 }}>{a}</p>
             </div>
         </div>
     )
@@ -75,6 +76,7 @@ function FaqItem({ q, a }) {
 
 export default function HelpPage() {
     const { lang } = useLang()
+    const c = useColors()
     const [contactMsg, setContactMsg] = useState('')
     const [sent, setSent] = useState(false)
 
@@ -86,12 +88,12 @@ export default function HelpPage() {
     }
 
     return (
-        <div style={{ fontFamily: "'Inter', system-ui, sans-serif", color: '#e8f5e9', maxWidth: 720 }}>
-            <style>{`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');*{box-sizing:border-box}textarea:focus{border-color:rgba(16,185,129,0.5)!important;outline:none;box-shadow:0 0 0 3px rgba(16,185,129,0.1)}`}</style>
+        <div style={{ fontFamily: "'Inter', system-ui, sans-serif", color: c.body, maxWidth: 720 }}>
+            <style>{`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');*{box-sizing:border-box}textarea:focus{border-color:${c.accentBorder}!important;outline:none;box-shadow:0 0 0 3px ${c.accentBg}}`}</style>
 
             <div style={{ marginBottom: 32 }}>
-                <h1 style={{ fontSize: 24, fontWeight: 700, color: '#f0fdf4', margin: 0 }}>{t('help_title', lang)}</h1>
-                <p style={{ margin: '6px 0 0', fontSize: 14, color: '#6ee7b7' }}>{t('help_subtitle', lang)}</p>
+                <h1 style={{ fontSize: 24, fontWeight: 700, color: c.heading, margin: 0 }}>{t('help_title', lang)}</h1>
+                <p style={{ margin: '6px 0 0', fontSize: 14, color: c.subheading }}>{t('help_subtitle', lang)}</p>
             </div>
 
             {/* Docs grid */}
@@ -99,36 +101,36 @@ export default function HelpPage() {
                 {DOCS.map(({ icon, title, desc }) => (
                     <div key={title} style={{
                         padding: '18px 16px', borderRadius: 12,
-                        background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)',
+                        background: c.cardBg, border: `1px solid ${c.cardBorder}`,
                         cursor: 'pointer', transition: 'all 0.2s',
                     }}
-                        onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(16,185,129,0.3)'; e.currentTarget.style.background = 'rgba(255,255,255,0.05)' }}
-                        onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.07)'; e.currentTarget.style.background = 'rgba(255,255,255,0.03)' }}
+                        onMouseEnter={e => { e.currentTarget.style.borderColor = c.cardBorderHover; e.currentTarget.style.background = c.cardBgHover }}
+                        onMouseLeave={e => { e.currentTarget.style.borderColor = c.cardBorder; e.currentTarget.style.background = c.cardBg }}
                     >
                         <div style={{ fontSize: 24, marginBottom: 8 }}>{icon}</div>
-                        <div style={{ fontSize: 14, fontWeight: 600, color: '#d1fae5', marginBottom: 6 }}>{title}</div>
-                        <div style={{ fontSize: 12, color: '#4ade80', lineHeight: 1.5 }}>{desc}</div>
+                        <div style={{ fontSize: 14, fontWeight: 600, color: c.body, marginBottom: 6 }}>{title}</div>
+                        <div style={{ fontSize: 12, color: c.faint, lineHeight: 1.5 }}>{desc}</div>
                     </div>
                 ))}
             </div>
 
             {/* FAQ */}
             <div style={{
-                background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)',
+                background: c.cardBg, border: `1px solid ${c.cardBorder}`,
                 borderRadius: 14, padding: '24px', marginBottom: 24,
             }}>
-                <h2 style={{ fontSize: 16, fontWeight: 600, color: '#d1fae5', margin: '0 0 4px' }}>{t('help_faq_title', lang)}</h2>
-                <p style={{ fontSize: 13, color: '#4ade80', margin: '0 0 20px' }}>{t('help_faq_hint', lang)}</p>
-                {FAQS.map(faq => <FaqItem key={faq.q} {...faq} />)}
+                <h2 style={{ fontSize: 16, fontWeight: 600, color: c.heading, margin: '0 0 4px' }}>{t('help_faq_title', lang)}</h2>
+                <p style={{ fontSize: 13, color: c.faint, margin: '0 0 20px' }}>{t('help_faq_hint', lang)}</p>
+                {FAQS.map(faq => <FaqItem key={faq.q} {...faq} c={c} />)}
             </div>
 
             {/* Contact */}
             <div style={{
-                background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)',
+                background: c.cardBg, border: `1px solid ${c.cardBorder}`,
                 borderRadius: 14, padding: '24px',
             }}>
-                <h2 style={{ fontSize: 16, fontWeight: 600, color: '#d1fae5', margin: '0 0 4px' }}>{t('help_contact_title', lang)}</h2>
-                <p style={{ fontSize: 13, color: '#4ade80', margin: '0 0 16px' }}>{t('help_contact_sub', lang)}</p>
+                <h2 style={{ fontSize: 16, fontWeight: 600, color: c.heading, margin: '0 0 4px' }}>{t('help_contact_title', lang)}</h2>
+                <p style={{ fontSize: 13, color: c.faint, margin: '0 0 16px' }}>{t('help_contact_sub', lang)}</p>
                 <textarea
                     value={contactMsg}
                     onChange={e => setContactMsg(e.target.value)}
@@ -136,22 +138,22 @@ export default function HelpPage() {
                     rows={4}
                     style={{
                         width: '100%', padding: '12px 14px', borderRadius: 8,
-                        background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-                        color: '#f0fdf4', fontSize: 14, fontFamily: 'inherit', resize: 'vertical',
+                        background: c.inputBg, border: `1px solid ${c.inputBorder}`,
+                        color: c.inputColor, fontSize: 14, fontFamily: 'inherit', resize: 'vertical',
                         marginBottom: 12, transition: 'all 0.2s',
                     }}
                 />
                 <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12 }}>
                     {sent && (
-                        <span style={{ fontSize: 14, color: '#34d399', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ fontSize: 14, color: c.accent, display: 'flex', alignItems: 'center', gap: 6 }}>
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12" /></svg>
                             {t('help_sent', lang)}
                         </span>
                     )}
                     <button onClick={handleSend} disabled={!contactMsg.trim()} style={{
                         padding: '10px 24px', borderRadius: 8, border: 'none',
-                        background: contactMsg.trim() ? 'linear-gradient(135deg,#065f46,#10b981)' : 'rgba(255,255,255,0.06)',
-                        color: contactMsg.trim() ? 'white' : '#4ade80',
+                        background: contactMsg.trim() ? `linear-gradient(135deg,${c.accentSub},${c.accent})` : c.inputBg,
+                        color: contactMsg.trim() ? 'white' : c.faint,
                         cursor: contactMsg.trim() ? 'pointer' : 'default',
                         fontFamily: 'inherit', fontSize: 14, fontWeight: 500, transition: 'all 0.2s',
                     }}>{t('help_contact_send', lang)}</button>

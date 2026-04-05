@@ -16,9 +16,11 @@ import AiPage from './pages/AiPage'
 import UpdatePage from './pages/UpdatePage'
 import SettingsPage from './pages/SettingsPage'
 import HelpPage from './pages/HelpPage'
+import CommunityPage from './pages/CommunityPage'   // ← NEW
 import { useLang } from './contexts/LangContext'
 import { t } from './i18n'
 import Sidebar from './components/Sidebar'
+import IoTDashboard from './pages/IoTDashboard'
 
 // ============================================================
 // MAIN LAYOUT  — sidebar + content side by side (inline styles)
@@ -38,7 +40,7 @@ function MainLayout({ session, handleLogout }) {
         flex: 1,
         overflowY: 'auto',
         padding: '32px',
-        minWidth: 0,           /* prevents flex child from overflowing */
+        minWidth: 0,
       }}>
         <Outlet />
       </main>
@@ -122,11 +124,13 @@ export default function App() {
             </ProtectedRoute>
           }
         >
-          <Route index element={<Dashboard />} />
-          <Route path="ai" element={<AiPage />} />
-          <Route path="update" element={<UpdatePage />} />
-          <Route path="settings" element={<SettingsPage />} />
-          <Route path="help" element={<HelpPage />} />
+          <Route index                element={<Dashboard />} />
+          <Route path="ai"            element={<AiPage />} />
+          <Route path="update"        element={<UpdatePage />} />
+          <Route path="settings"      element={<SettingsPage />} />
+          <Route path="help"          element={<HelpPage />} />
+          <Route path="iot"           element={<IoTDashboard />} />
+          <Route path="community"     element={<CommunityPage />} />  {/* ← NEW */}
         </Route>
 
         {/* ── FALLBACK ── */}

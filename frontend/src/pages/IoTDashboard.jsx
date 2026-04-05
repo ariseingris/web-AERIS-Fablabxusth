@@ -1,0 +1,603 @@
+// frontend/src/pages/IoTDashboard.jsx
+// Matches your existing Dashboard.jsx style exactly:
+//   - useColors() for all colors
+//   - useLang() + t() for i18n
+//   - Inter + DM Mono fonts
+//   - Same card / border / animation patterns
+
+import { useState, useCallback } from 'react'
+import { useLang } from '../contexts/LangContext'
+import { useColors } from '../hooks/useColors'
+import { useMqttBridge } from '../hooks/useMqttBridge'
+
+// ─── Sensor emoji map ─────────────────────────────────────────────────────────
+const SENSOR_ICONS = {
+  temperature: '🌡️', humidity: '💧', pressure: '🔵',
+  light: '☀️', motion: '👁️', co2: '🌿',
+  voltage: '⚡', current: '🔌', default: '📊',
+}
+
+// ─── Labels (vi / en) ────────────────────────────────────────────────────────
+const L = {
+  title:         { vi: 'Trung tâm IoT',       en: 'IoT Control Center' },
+  subtitle:      { vi: 'Chọn thiết bị để bắt đầu điều khiển', en: 'Select a device to start controlling' },
+  devices:       { vi: 'Thiết bị',             en: 'Devices' },
+  addDevice:     { vi: '+ Thêm thiết bị',      en: '+ Add Device' },
+  noDevices:     { vi: 'Chưa có thiết bị nào', en: 'No devices yet' },
+  addFirst:      { vi: 'Thêm thiết bị đầu tiên', en: 'Add First Device' },
+  noSelected:    { vi: 'Chưa chọn thiết bị',   en: 'No Device Selected' },
+  noSelectedSub: { vi: 'Chọn thiết bị ở bảng trái để xem dashboard và điều khiển.', en: 'Choose a device from the left panel to view its dashboard and controls.' },
+  power:         { vi: 'Nguồn',                en: 'Power' },
+  on:            { vi: 'BẬT',                  en: 'ON' },
+  off:           { vi: 'TẮT',                  en: 'OFF' },
+  online:        { vi: 'Trực tuyến',           en: 'Online' },
+  offline:       { vi: 'Ngoại tuyến',          en: 'Offline' },
+  waiting:       { vi: 'Đang chờ dữ liệu cảm biến…', en: 'Waiting for sensor data…' },
+  waitingSub:    { vi: 'Publish vào', en: 'Publish to' },
+  sendCmd:       { vi: '+ Gửi lệnh',           en: '+ Send Command' },
+  command:       { vi: 'lệnh',                 en: 'command' },
+  value:         { vi: 'giá trị',              en: 'value' },
+  send:          { vi: 'Gửi',                  en: 'Send' },
+  remove:        { vi: 'Xoá',                  en: 'Remove' },
+  // Add modal
+  addTitle:      { vi: 'Thêm thiết bị IoT',   en: 'Add IoT Device' },
+  deviceId:      { vi: 'Device ID',            en: 'Device ID' },
+  deviceIdHint:  { vi: '(phải khớp topic MQTT)', en: '(must match MQTT topic)' },
+  deviceName:    { vi: 'Tên hiển thị',         en: 'Display Name' },
+  iconLabel:     { vi: 'Biểu tượng',           en: 'Icon' },
+  cancel:        { vi: 'Huỷ',                  en: 'Cancel' },
+  add:           { vi: 'Thêm',                 en: 'Add' },
+  topicSub:      { vi: 'Sẽ subscribe vào:',    en: 'Will subscribe to:' },
+  topicPub:      { vi: 'Sẽ publish vào:',      en: 'Will publish to:' },
+  // Status
+  ws:            { vi: 'Kết nối',              en: 'WS' },
+  mqtt:          { vi: 'MQTT',                 en: 'MQTT' },
+}
+const lv = (key, lang) => L[key]?.[lang] ?? L[key]?.en ?? key
+
+// ─── Add Device Modal ─────────────────────────────────────────────────────────
+function AddDeviceModal({ onAdd, onClose, lang, C }) {
+  const [form, setForm] = useState({ deviceId: '', name: '', icon: '📡' })
+  const icons = ['📡', '💡', '🌡️', '🔌', '🏠', '🚗', '🌊', '🔧', '📷', '🎛️']
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 200,
+        background: 'rgba(0,0,0,0.55)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        backdropFilter: 'blur(4px)',
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: C.cardBg, border: `1px solid ${C.cardBorder}`,
+          borderRadius: 16, padding: 28, width: 420, maxWidth: '92vw',
+          display: 'flex', flexDirection: 'column', gap: 16,
+          boxShadow: '0 24px 60px rgba(0,0,0,0.4)',
+        }}
+      >
+        <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: C.heading }}>
+          {lv('addTitle', lang)}
+        </h3>
+
+        {/* Device ID */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <label style={{ fontSize: 12, color: C.subheading, fontWeight: 600 }}>
+            {lv('deviceId', lang)}{' '}
+            <span style={{ color: C.faint, fontWeight: 400 }}>{lv('deviceIdHint', lang)}</span>
+          </label>
+          <input
+            value={form.deviceId}
+            onChange={e => setForm({ ...form, deviceId: e.target.value.replace(/\s/g, '_') })}
+            placeholder="e.g. device_a"
+            style={{
+              background: C.accentBg, border: `1px solid ${C.cardBorder}`,
+              borderRadius: 8, padding: '9px 12px',
+              color: C.body, fontSize: 13,
+              fontFamily: "'DM Mono', monospace", outline: 'none',
+            }}
+          />
+        </div>
+
+        {/* Display name */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <label style={{ fontSize: 12, color: C.subheading, fontWeight: 600 }}>
+            {lv('deviceName', lang)}
+          </label>
+          <input
+            value={form.name}
+            onChange={e => setForm({ ...form, name: e.target.value })}
+            placeholder="e.g. Phòng khách"
+            style={{
+              background: C.accentBg, border: `1px solid ${C.cardBorder}`,
+              borderRadius: 8, padding: '9px 12px',
+              color: C.body, fontSize: 13,
+              fontFamily: "'Inter', sans-serif", outline: 'none',
+            }}
+          />
+        </div>
+
+        {/* Icon picker */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <label style={{ fontSize: 12, color: C.subheading, fontWeight: 600 }}>
+            {lv('iconLabel', lang)}
+          </label>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {icons.map(ic => (
+              <button key={ic} onClick={() => setForm({ ...form, icon: ic })} style={{
+                fontSize: 20, width: 40, height: 40, borderRadius: 8, cursor: 'pointer',
+                border: `1px solid ${form.icon === ic ? C.accent : C.cardBorder}`,
+                background: form.icon === ic ? C.accentBg : 'transparent',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                transition: 'all 0.15s',
+              }}>{ic}</button>
+            ))}
+          </div>
+        </div>
+
+        {/* Topic preview */}
+        <div style={{
+          background: C.accentBg, border: `1px solid ${C.accentBorder}`,
+          borderRadius: 8, padding: '10px 14px',
+          display: 'flex', flexDirection: 'column', gap: 4,
+        }}>
+          <span style={{ fontSize: 11, color: C.faint }}>{lv('topicSub', lang)}</span>
+          <code style={{ fontSize: 11, color: C.accent, fontFamily: "'DM Mono', monospace" }}>
+            devices/{form.deviceId || '<id>'}/status
+          </code>
+          <code style={{ fontSize: 11, color: C.accent, fontFamily: "'DM Mono', monospace" }}>
+            devices/{form.deviceId || '<id>'}/sensors/#
+          </code>
+          <span style={{ fontSize: 11, color: C.faint, marginTop: 2 }}>{lv('topicPub', lang)}</span>
+          <code style={{ fontSize: 11, color: C.accent, fontFamily: "'DM Mono', monospace" }}>
+            devices/{form.deviceId || '<id>'}/control
+          </code>
+        </div>
+
+        {/* Buttons */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
+          <button onClick={onClose} style={{
+            padding: '8px 16px', borderRadius: 8, cursor: 'pointer',
+            background: 'transparent', border: `1px solid ${C.cardBorder}`,
+            color: C.subheading, fontSize: 13, fontFamily: 'inherit',
+          }}>{lv('cancel', lang)}</button>
+          <button
+            onClick={() => { if (form.deviceId.trim()) { onAdd(form.deviceId.trim(), form.name || form.deviceId, form.icon); onClose(); } }}
+            style={{
+              padding: '8px 20px', borderRadius: 8, cursor: 'pointer',
+              background: C.accentBgStrong, border: `1px solid ${C.accentBorderStrong}`,
+              color: C.accent, fontSize: 13, fontWeight: 600, fontFamily: 'inherit',
+              transition: 'all 0.15s',
+            }}
+          >{lv('add', lang)}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Sensor Card — matches StatCard visual feel ───────────────────────────────
+function SensorCard({ sensorKey, data, C }) {
+  const icon = SENSOR_ICONS[sensorKey] || SENSOR_ICONS.default
+  const val  = data?.value ?? '—'
+  const unit = data?.unit  ?? ''
+  const ts   = data?.timestamp ? new Date(data.timestamp).toLocaleTimeString() : null
+
+  return (
+    <div style={{
+      background: C.cardBg, border: `1px solid ${C.cardBorder}`,
+      borderRadius: 12, padding: '14px 16px',
+      display: 'flex', alignItems: 'flex-start', gap: 12,
+      transition: 'border-color 0.2s, background 0.2s',
+    }}
+      onMouseEnter={e => { e.currentTarget.style.borderColor = C.cardBorderHover; e.currentTarget.style.background = C.cardBgHover }}
+      onMouseLeave={e => { e.currentTarget.style.borderColor = C.cardBorder;      e.currentTarget.style.background = C.cardBg }}
+    >
+      <div style={{
+        width: 36, height: 36, borderRadius: 8, flexShrink: 0,
+        background: C.accentBg, border: `1px solid ${C.accentBorder}`,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 18,
+      }}>{icon}</div>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontSize: 11, color: C.faint, textTransform: 'capitalize', letterSpacing: 0.4 }}>
+          {sensorKey}
+        </div>
+        <div style={{ fontSize: 22, fontWeight: 600, color: C.accent, lineHeight: 1.2, marginTop: 2 }}>
+          {val}<span style={{ fontSize: 13, color: C.subheading, marginLeft: 2 }}>{unit}</span>
+        </div>
+        {ts && <div style={{ fontSize: 10, color: C.faint, marginTop: 3, fontFamily: "'DM Mono', monospace" }}>{ts}</div>}
+      </div>
+    </div>
+  )
+}
+
+// ─── Power Toggle — custom pill ───────────────────────────────────────────────
+function PowerToggle({ on, onToggle, lang, C }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 12,
+      padding: '14px 16px', borderRadius: 12,
+      background: C.accentBg, border: `1px solid ${C.accentBorder}`,
+    }}>
+      <span style={{ fontSize: 13, color: C.subheading, fontWeight: 600, minWidth: 50 }}>
+        {lv('power', lang)}
+      </span>
+      <button
+        onClick={() => onToggle(!on)}
+        style={{
+          position: 'relative', width: 48, height: 26, borderRadius: 13, border: 'none',
+          background: on ? C.accent : C.divider, cursor: 'pointer',
+          transition: 'background 0.25s', flexShrink: 0,
+        }}
+      >
+        <span style={{
+          position: 'absolute', top: 3,
+          left: on ? 25 : 3,
+          width: 20, height: 20, borderRadius: '50%', background: '#fff',
+          transition: 'left 0.2s', display: 'block',
+          boxShadow: '0 1px 4px rgba(0,0,0,0.3)',
+        }} />
+      </button>
+      <span style={{
+        fontSize: 12, fontWeight: 700,
+        fontFamily: "'DM Mono', monospace",
+        color: on ? C.accent : C.faint,
+        letterSpacing: 1,
+      }}>
+        {on ? lv('on', lang) : lv('off', lang)}
+      </span>
+    </div>
+  )
+}
+
+// ─── Device Panel ─────────────────────────────────────────────────────────────
+function DevicePanel({ device, onTogglePower, onSendCommand, onRemove, lang, C }) {
+  const [showCmd,  setShowCmd]  = useState(false)
+  const [cmd,      setCmd]      = useState('')
+  const [cmdVal,   setCmdVal]   = useState('')
+
+  const isPowered = device.state?.power === true || device.state?.power === 'on' || device.state?.power === 1
+  const isOnline  = device.state?.online !== false
+  const sensors   = device.state?.sensors || {}
+  const hasSensors = Object.keys(sensors).length > 0
+
+  return (
+    <div style={{
+      background: C.cardBg, border: `1px solid ${isPowered ? C.accent : C.cardBorder}`,
+      borderRadius: 16, padding: 24,
+      display: 'flex', flexDirection: 'column', gap: 20,
+      transition: 'border-color 0.3s',
+    }}>
+
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div style={{
+            width: 48, height: 48, borderRadius: 12, fontSize: 26,
+            background: C.accentBg, border: `1px solid ${C.accentBorder}`,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>{device.icon || '📡'}</div>
+          <div>
+            <div style={{ fontSize: 20, fontWeight: 700, color: C.heading, lineHeight: 1 }}>
+              {device.name}
+            </div>
+            <div style={{ fontSize: 11, color: C.faint, marginTop: 4, fontFamily: "'DM Mono', monospace" }}>
+              ID: {device.id}
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {/* Online badge */}
+          <span style={{
+            display: 'flex', alignItems: 'center', gap: 5,
+            fontSize: 11, fontFamily: "'DM Mono', monospace",
+            color: isOnline ? C.accent : C.faint,
+            background: isOnline ? C.accentBg : C.divider,
+            border: `1px solid ${isOnline ? C.accentBorder : C.cardBorder}`,
+            borderRadius: 100, padding: '3px 9px',
+          }}>
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: isOnline ? C.accent : C.faint, display: 'inline-block' }} />
+            {isOnline ? lv('online', lang) : lv('offline', lang)}
+          </span>
+          {/* Remove */}
+          <button onClick={() => onRemove(device.id)} style={{
+            background: 'transparent', border: `1px solid ${C.cardBorder}`,
+            color: C.faint, borderRadius: 6, cursor: 'pointer',
+            padding: '4px 10px', fontSize: 12, fontFamily: 'inherit',
+            transition: 'all 0.15s',
+          }}
+            onMouseEnter={e => { e.currentTarget.style.color = '#f87171'; e.currentTarget.style.borderColor = '#f87171' }}
+            onMouseLeave={e => { e.currentTarget.style.color = C.faint;   e.currentTarget.style.borderColor = C.cardBorder }}
+          >{lv('remove', lang)}</button>
+        </div>
+      </div>
+
+      {/* Power */}
+      <PowerToggle on={isPowered} onToggle={p => onTogglePower(device.id, p)} lang={lang} C={C} />
+
+      {/* Sensors */}
+      {hasSensors ? (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12 }}>
+          {Object.entries(sensors).map(([key, data]) => (
+            <SensorCard key={key} sensorKey={key} data={data} C={C} />
+          ))}
+        </div>
+      ) : (
+        <div style={{
+          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
+          padding: 28, borderRadius: 12,
+          background: C.accentBg, border: `1px dashed ${C.accentBorder}`,
+          color: C.faint, fontSize: 13, textAlign: 'center',
+        }}>
+          <span style={{ fontSize: 32 }}>📭</span>
+          <span>{lv('waiting', lang)}</span>
+          <code style={{ fontSize: 11, color: C.accent, fontFamily: "'DM Mono', monospace" }}>
+            devices/{device.id}/sensors/temperature
+          </code>
+        </div>
+      )}
+
+      {/* Custom command */}
+      <div>
+        {!showCmd ? (
+          <button onClick={() => setShowCmd(true)} style={{
+            background: 'transparent', border: `1px dashed ${C.accentBorder}`,
+            color: C.accent, borderRadius: 8, padding: '8px 16px',
+            fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s',
+          }}>{lv('sendCmd', lang)}</button>
+        ) : (
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <input
+              placeholder={lv('command', lang)}
+              value={cmd}
+              onChange={e => setCmd(e.target.value)}
+              style={{
+                flex: 1, minWidth: 100,
+                background: C.accentBg, border: `1px solid ${C.cardBorder}`,
+                borderRadius: 8, padding: '8px 12px', color: C.body,
+                fontSize: 13, fontFamily: "'DM Mono', monospace", outline: 'none',
+              }}
+            />
+            <input
+              placeholder={lv('value', lang)}
+              value={cmdVal}
+              onChange={e => setCmdVal(e.target.value)}
+              style={{
+                flex: 1, minWidth: 100,
+                background: C.accentBg, border: `1px solid ${C.cardBorder}`,
+                borderRadius: 8, padding: '8px 12px', color: C.body,
+                fontSize: 13, fontFamily: "'DM Mono', monospace", outline: 'none',
+              }}
+            />
+            <button onClick={() => {
+              if (cmd) { onSendCommand(device.id, cmd, cmdVal); setCmd(''); setCmdVal(''); setShowCmd(false) }
+            }} style={{
+              background: C.accentBgStrong, border: `1px solid ${C.accentBorderStrong}`,
+              color: C.accent, borderRadius: 8, padding: '8px 16px',
+              fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+            }}>{lv('send', lang)}</button>
+            <button onClick={() => setShowCmd(false)} style={{
+              background: 'transparent', border: `1px solid ${C.cardBorder}`,
+              color: C.subheading, borderRadius: 8, padding: '8px 12px',
+              fontSize: 13, cursor: 'pointer', fontFamily: 'inherit',
+            }}>✕</button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── Main IoTDashboard ────────────────────────────────────────────────────────
+export default function IoTDashboard() {
+  const { lang } = useLang()
+  const C = useColors()
+  const { brokerStatus, wsStatus, devices, registerDevice, removeDevice, togglePower, sendCommand } = useMqttBridge()
+
+  const [selectedId,   setSelectedId]   = useState(null)
+  const [showAddModal, setShowAddModal] = useState(false)
+
+  const handleAdd = useCallback((deviceId, name, icon) => {
+    registerDevice(deviceId, name, icon)
+    setSelectedId(deviceId)
+  }, [registerDevice])
+
+  const handleRemove = useCallback((deviceId) => {
+    removeDevice(deviceId)
+    if (selectedId === deviceId) setSelectedId(null)
+  }, [removeDevice, selectedId])
+
+  const selected = devices.find(d => d.id === selectedId)
+
+  const wsColor     = wsStatus === 'open'           ? C.accent : C.faint
+  const brokerColor = brokerStatus === 'connected'  ? C.accent
+                    : brokerStatus === 'error'       ? '#f87171'
+                    : '#f59e0b'
+
+  return (
+    <div style={{ fontFamily: "'Inter', system-ui, sans-serif", color: C.body, minHeight: '100vh' }}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap');*{box-sizing:border-box}`}</style>
+
+      {/* ── Page header (same pattern as Dashboard) ── */}
+      <div style={{ marginBottom: 32 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 16 }}>
+          <div>
+            <h1 style={{ fontSize: 28, fontWeight: 700, color: C.heading, margin: 0, lineHeight: 1.2 }}>
+              {lv('title', lang)}
+              {selected && (
+                <span style={{ color: C.accent, fontWeight: 400 }}> / {selected.name}</span>
+              )}
+            </h1>
+            <p style={{ margin: '6px 0 0', color: C.subheading, fontSize: 14 }}>
+              {selected
+                ? `ID: ${selected.id} · ${selected.state?.online !== false ? lv('online', lang) : lv('offline', lang)}`
+                : lv('subtitle', lang)}
+            </p>
+          </div>
+
+          {/* Status badges + Add button */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            {/* WS status */}
+            <span style={{
+              display: 'flex', alignItems: 'center', gap: 5,
+              fontSize: 11, fontFamily: "'DM Mono', monospace", color: C.faint,
+              background: C.accentBg, border: `1px solid ${wsColor}`,
+              borderRadius: 100, padding: '4px 10px',
+            }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: wsColor, display: 'inline-block' }} />
+              {lv('ws', lang)}: {wsStatus}
+            </span>
+            {/* MQTT broker status */}
+            <span style={{
+              display: 'flex', alignItems: 'center', gap: 5,
+              fontSize: 11, fontFamily: "'DM Mono', monospace", color: C.faint,
+              background: C.accentBg, border: `1px solid ${brokerColor}`,
+              borderRadius: 100, padding: '4px 10px',
+            }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: brokerColor, display: 'inline-block' }} />
+              MQTT: {brokerStatus}
+            </span>
+            {/* Add device */}
+            <button
+              onClick={() => setShowAddModal(true)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                padding: '8px 14px', borderRadius: 8,
+                background: C.accentBgStrong, border: `1px solid ${C.accentBorderStrong}`,
+                color: C.accent, fontSize: 13, fontWeight: 600,
+                cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.2s',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = C.accentBg }}
+              onMouseLeave={e => { e.currentTarget.style.background = C.accentBgStrong }}
+            >{lv('addDevice', lang)}</button>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Layout: device list | main panel ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 16, alignItems: 'start' }}>
+
+        {/* ── Device list ── */}
+        <div style={{
+          background: C.cardBg, border: `1px solid ${C.cardBorder}`,
+          borderRadius: 16, overflow: 'hidden',
+        }}>
+          <div style={{
+            padding: '12px 16px', fontSize: 11, fontWeight: 700,
+            letterSpacing: 1.5, textTransform: 'uppercase', color: C.faint,
+            borderBottom: `1px solid ${C.cardBorder}`,
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          }}>
+            {lv('devices', lang)}
+            <span style={{
+              background: C.accentBg, color: C.accent, border: `1px solid ${C.accentBorder}`,
+              borderRadius: 10, padding: '1px 7px', fontSize: 11,
+              fontFamily: "'DM Mono', monospace",
+            }}>{devices.length}</span>
+          </div>
+
+          {devices.length === 0 ? (
+            <div style={{
+              display: 'flex', flexDirection: 'column', alignItems: 'center',
+              gap: 10, padding: 24, color: C.faint, fontSize: 12, textAlign: 'center',
+            }}>
+              <span style={{ fontSize: 28 }}>📡</span>
+              <span>{lv('noDevices', lang)}</span>
+              <button onClick={() => setShowAddModal(true)} style={{
+                background: C.accentBgStrong, border: `1px solid ${C.accentBorderStrong}`,
+                color: C.accent, borderRadius: 8, padding: '7px 12px',
+                fontSize: 12, cursor: 'pointer', fontFamily: 'inherit',
+              }}>{lv('addFirst', lang)}</button>
+            </div>
+          ) : (
+            devices.map(device => {
+              const isPowered = device.state?.power === true || device.state?.power === 'on'
+              const isOnline  = device.state?.online !== false
+              const isSelected = device.id === selectedId
+              return (
+                <button key={device.id} onClick={() => setSelectedId(device.id)} style={{
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  padding: '11px 14px', width: '100%', textAlign: 'left',
+                  background: isSelected ? C.accentBg : 'transparent',
+                  borderLeft: `3px solid ${isSelected ? C.accent : 'transparent'}`,
+                  border: 'none',
+                  borderBottom: `1px solid ${C.cardBorder}`,
+                  cursor: 'pointer', color: C.body,
+                  transition: 'background 0.15s',
+                }}>
+                  <span style={{ fontSize: 20, flexShrink: 0 }}>{device.icon || '📡'}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{
+                      fontSize: 13, fontWeight: isSelected ? 600 : 400,
+                      color: isSelected ? C.accent : C.body,
+                      whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                    }}>{device.name}</div>
+                    <div style={{
+                      fontSize: 10, color: C.faint, marginTop: 1,
+                      fontFamily: "'DM Mono', monospace",
+                    }}>{device.id}</div>
+                  </div>
+                  {/* Status dots */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                    <span style={{ width: 7, height: 7, borderRadius: '50%', background: isOnline ? C.accent : C.faint, display: 'inline-block' }} />
+                    <span style={{ width: 7, height: 7, borderRadius: '50%', background: isPowered ? '#f59e0b' : 'transparent', border: `1px solid ${C.cardBorder}`, display: 'inline-block' }} />
+                  </div>
+                </button>
+              )
+            })
+          )}
+        </div>
+
+        {/* ── Main panel ── */}
+        <div>
+          {!selected ? (
+            <div style={{
+              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+              minHeight: 360, gap: 14, padding: 40, textAlign: 'center',
+              background: C.cardBg, border: `1px dashed ${C.cardBorder}`, borderRadius: 16,
+            }}>
+              <span style={{ fontSize: 52 }}>🛰️</span>
+              <h2 style={{ fontSize: 20, fontWeight: 700, color: C.heading, margin: 0 }}>
+                {lv('noSelected', lang)}
+              </h2>
+              <p style={{ color: C.subheading, fontSize: 14, maxWidth: 360, lineHeight: 1.6, margin: 0 }}>
+                {devices.length > 0 ? lv('noSelectedSub', lang) : lv('subtitle', lang)}
+              </p>
+              {devices.length === 0 && (
+                <button onClick={() => setShowAddModal(true)} style={{
+                  background: C.accentBgStrong, border: `1px solid ${C.accentBorderStrong}`,
+                  color: C.accent, borderRadius: 8, padding: '9px 20px',
+                  fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+                }}>{lv('addDevice', lang)}</button>
+              )}
+            </div>
+          ) : (
+            <DevicePanel
+              device={selected}
+              onTogglePower={togglePower}
+              onSendCommand={sendCommand}
+              onRemove={handleRemove}
+              lang={lang}
+              C={C}
+            />
+          )}
+        </div>
+      </div>
+
+      {/* ── Add Modal ── */}
+      {showAddModal && (
+        <AddDeviceModal
+          onAdd={handleAdd}
+          onClose={() => setShowAddModal(false)}
+          lang={lang}
+          C={C}
+        />
+      )}
+    </div>
+  )
+}

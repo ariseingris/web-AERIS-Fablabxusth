@@ -1,0 +1,20 @@
+// Login / Auth page translations
+export default {
+    login_title:        { en: 'Sign In',          vi: 'Đăng nhập' },
+    login_signup_title: { en: 'Create Account',   vi: 'Tạo tài khoản' },
+    login_welcome:      { en: 'Welcome back!',    vi: 'Chào mừng trở lại!' },
+    login_start:        { en: 'Start free today', vi: 'Bắt đầu miễn phí ngay hôm nay' },
+    login_email:        { en: 'Email',            vi: 'Email' },
+    login_email_ph:     { en: 'you@email.com',    vi: 'ban@email.com' },
+    login_pw:           { en: 'Password',         vi: 'Mật khẩu' },
+    login_pw_ph:        { en: '••••••••',         vi: '••••••••' },
+    login_btn_in:       { en: 'Sign In',          vi: 'Đăng nhập' },
+    login_btn_up:       { en: 'Create Account',   vi: 'Tạo tài khoản' },
+    login_loading:      { en: 'Processing...',    vi: 'Đang xử lý...' },
+    login_no_acct:      { en: "Don't have an account? ", vi: 'Chưa có tài khoản? ' },
+    login_has_acct:     { en: 'Already have an account? ', vi: 'Đã có tài khoản? ' },
+    login_go_up:        { en: 'Sign up now',      vi: 'Đăng ký ngay' },
+    login_go_in:        { en: 'Sign in',          vi: 'Đăng nhập' },
+    login_or:           { en: 'OR',               vi: 'HOẶC' },
+    login_check_email:  { en: 'Check your inbox!', vi: 'Kiểm tra hộp thư của bạn!' },
+}

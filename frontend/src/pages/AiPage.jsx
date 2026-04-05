@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from 'react'
 import { useColors } from '../hooks/useColors'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
+// ✅ FIXED: use relative path — goes through Vite proxy to ai-service container
+const API_URL = '/chat'
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
 const SendIcon = () => (
@@ -58,7 +59,6 @@ function ConfirmModal({ onConfirm, onCancel, C }) {
         boxShadow: '0 30px 80px rgba(0,0,0,0.6), 0 0 0 1px #f59e0b11',
         animation: 'modalIn 0.22s cubic-bezier(0.34,1.56,0.64,1)',
       }}>
-        {/* Icon */}
         <div style={{
           width: 48, height: 48, borderRadius: 14, marginBottom: 16,
           background: '#f59e0b14', border: '1px solid #f59e0b44',
@@ -182,60 +182,60 @@ export default function AiPage() {
   const addSystem = (text) =>
     setMessages(prev => [...prev, { role: 'system', text, time: '' }])
 
-  // ── Mode switching ──────────────────────────────────────────────────────────
-  const switchToControl = () => {
-    setShowConfirm(true)
-  }
-
   const switchToChat = () => {
+    if (mode === 'chat') return
     setMode('chat')
     setControlGranted(false)
-    addSystem('Đã chuyển về Chat thường · Quyền điều khiển đã thu hồi 🔒')
+    addSystem('Đã chuyển sang Chat thường · Quyền điều khiển đã thu hồi')
+  }
+
+  const switchToControl = () => {
+    if (mode === 'control') return
+    if (!controlGranted) {
+      setShowConfirm(true)
+    } else {
+      setMode('control')
+      addSystem('⚡ Chế độ điều khiển thiết bị đang hoạt động')
+    }
   }
 
   const confirmControl = () => {
     setShowConfirm(false)
-    setMode('control')
     setControlGranted(true)
-    addSystem('⚡ Chế độ điều khiển thiết bị đã được bật · Quyền đã cấp')
+    setMode('control')
+    addSystem('⚡ Quyền điều khiển đã được cấp · AI có thể bật/tắt thiết bị')
   }
 
-  // ── Send ────────────────────────────────────────────────────────────────────
   const handleSend = async () => {
-    const trimmed = input.trim()
-    if (!trimmed || isLoading) return
+    const text = input.trim()
+    if (!text || isLoading) return
 
-    const snapshot = [...messages]
-    const newMessages = [...snapshot, { role: 'user', text: trimmed, time: now() }]
-    setMessages(newMessages)
     setInput('')
-    setIsLoading(true)
     setError(null)
+    setMessages(prev => [...prev, { role: 'user', text, time: now() }])
+    setIsLoading(true)
 
     try {
-      const res = await fetch(`${API_URL}/chat`, {
+      const res = await fetch(API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          message: trimmed,
+          message: text,
           session_id: sessionId.current,
           mode,
           control_granted: controlGranted,
         }),
       })
 
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        throw new Error(err.error || `Lỗi server: ${res.status}`)
-      }
-
       const data = await res.json()
-      if (!data.reply) throw new Error('Phản hồi không hợp lệ.')
 
-      setMessages([...newMessages, { role: 'bot', text: data.reply, time: now() }])
-    } catch (e) {
-      setError(e.message)
-      setMessages(snapshot)
+      if (!res.ok) {
+        setError(data.error || `Lỗi server: ${res.status}`)
+      } else {
+        setMessages(prev => [...prev, { role: 'assistant', text: data.reply, time: now() }])
+      }
+    } catch (err) {
+      setError('Không thể kết nối đến server. Vui lòng thử lại.')
     } finally {
       setIsLoading(false)
       inputRef.current?.focus()
@@ -243,7 +243,10 @@ export default function AiPage() {
   }
 
   const handleKeyDown = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() }
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleSend()
+    }
   }
 
   // ── Render ──────────────────────────────────────────────────────────────────
@@ -270,7 +273,6 @@ export default function AiPage() {
 
         {/* Mode toggle */}
         <div style={{ display: 'flex', gap: 4, padding: 4, background: C.accentBg, border: `1px solid ${C.cardBorder}`, borderRadius: 12 }}>
-          {/* Chat button */}
           <button onClick={switchToChat} style={{
             display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 8,
             border: !isControl ? '1px solid #10b98155' : '1px solid transparent',
@@ -282,7 +284,6 @@ export default function AiPage() {
             <ChatIcon /> Chat thường
           </button>
 
-          {/* Control button */}
           <button onClick={switchToControl} style={{
             display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 8,
             border: isControl ? '1px solid #f59e0b55' : '1px solid transparent',
@@ -335,7 +336,6 @@ export default function AiPage() {
           <MessageBubble key={i} msg={m} C={C} isControl={isControl} />
         ))}
 
-        {/* Loading dots */}
         {isLoading && (
           <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
             <div style={{
@@ -361,7 +361,6 @@ export default function AiPage() {
           </div>
         )}
 
-        {/* Error */}
         {error && (
           <div style={{
             padding: '8px 14px', borderRadius: 8, fontSize: 12,
@@ -424,7 +423,6 @@ export default function AiPage() {
         </button>
       </div>
 
-      {/* Confirm modal */}
       {showConfirm && <ConfirmModal onConfirm={confirmControl} onCancel={() => setShowConfirm(false)} C={C} />}
     </div>
   )

@@ -4,10 +4,20 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   server: {
-    host: true, // Rất quan trọng: Mở kết nối ra mạng bên ngoài container (0.0.0.0)
+    host: true,
     port: 5173,
     watch: {
-      usePolling: true // Rất cần thiết khi dùng Docker để code tự động update khi bạn lưu file
+      usePolling: true
+    },
+    proxy: {
+      '/chat': {
+        target: 'http://ai-service:5000',
+        changeOrigin: true,
+      },
+      '/health': {
+        target: 'http://ai-service:5000',
+        changeOrigin: true,
+      }
     }
   },
   test: {
