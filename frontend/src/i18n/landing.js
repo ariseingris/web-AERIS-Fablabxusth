@@ -86,5 +86,5 @@ export default {
     land_priv_rev:   { en: 'LAST REVIEWED: JANUARY 2025 · QUESTIONS? CONTACT legal@verdant.app', vi: 'CẬP NHẬT LẦN CUỐI: THÁNG 1/2025 · HỖ TRỢ: legal@verdant.app' },
 
     // Footer
-    land_foot_copy: { en: '© 2025 VERDANT INC. · ALL RIGHTS RESERVED', vi: '© 2025 VERDANT INC. · TẤT CẢ CÁC QUYỀN ĐƯỢC BẢO LƯU' },
+    land_foot_copy: { en: 'Powered by AERIS Core Engine © 2026. · ALL RIGHTS RESERVED', vi: 'Cung cấp bởi AERIS Core Engine © 2026. · TẤT CẢ CÁC QUYỀN ĐƯỢC BẢO LƯU' },
 }

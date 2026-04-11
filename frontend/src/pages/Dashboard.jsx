@@ -208,6 +208,10 @@ export default function Dashboard() {
         </div>
 
       </div>
+      
+      <div style={{ marginTop: 32, paddingBottom: 24, textAlign: 'center', fontSize: 13, color: C.muted }}>
+        Powered by AERIS Core Engine © 2026.
+      </div>
     </div>
   )
 }
