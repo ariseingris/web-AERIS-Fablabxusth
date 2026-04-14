@@ -421,7 +421,7 @@ export default function IoTDashboard() {
 
   return (
     <div style={{ fontFamily: "'Inter', system-ui, sans-serif", color: C.body, minHeight: '100vh' }}>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap');*{box-sizing:border-box}`}</style>
+      <style>{`*{box-sizing:border-box}`}</style>
 
       {/* ── Page header (same pattern as Dashboard) ── */}
       <div style={{ marginBottom: 32 }}>

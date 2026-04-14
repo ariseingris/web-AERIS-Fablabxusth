@@ -84,7 +84,7 @@ export default function SettingsPage() {
 
   return (
     <div style={{ fontFamily: "'Inter', system-ui, sans-serif", color: C.body, maxWidth: 640 }}>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap');*{box-sizing:border-box}input:focus,select:focus,textarea:focus{border-color:${C.accent}!important;box-shadow:0 0 0 3px ${C.accentBg}}`}</style>
+      <style>{`*{box-sizing:border-box}input:focus,select:focus,textarea:focus{border-color:${C.accent}!important;box-shadow:0 0 0 3px ${C.accentBg}}`}</style>
 
       <div style={{ marginBottom: 24 }}>
         <h1 style={{ fontSize: 24, fontWeight: 700, color: C.heading, margin: 0 }}>{t('set_title', lang)}</h1>

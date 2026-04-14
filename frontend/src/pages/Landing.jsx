@@ -1,3 +1,4 @@
+// Landing page intentionally uses fixed dark theme — does not use useColors()
 /**
  * Landing.jsx
  * ─────────────────────────────────────────────────────────────

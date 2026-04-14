@@ -24,6 +24,26 @@ module.exports = function attachMqttBridge(httpServer) {
   // In-memory stores
   const deviceRegistry = new Map(); // id → { name, icon }
   const deviceState    = new Map(); // id → { power, online, lastSeen, sensors:{} }
+  const offlineTimers  = new Map();
+  const OFFLINE_TIMEOUT = 30_000;
+
+  function resetOfflineTimer(deviceId) {
+    if (offlineTimers.has(deviceId)) {
+      clearTimeout(offlineTimers.get(deviceId));
+    }
+    offlineTimers.set(deviceId, setTimeout(() => {
+      const state = deviceState.get(deviceId);
+      if (state) {
+        state.online = false;
+        broadcast({
+          type: 'device_data',
+          deviceId,
+          state,
+          timestamp: new Date().toISOString(),
+        });
+      }
+    }, OFFLINE_TIMEOUT));
+  }
 
   // ── MQTT events ──────────────────────────────────────────────────────────
   mqttClient.on('connect', () => {
@@ -66,6 +86,8 @@ module.exports = function attachMqttBridge(httpServer) {
       state: deviceState.get(deviceId),
       timestamp: new Date().toISOString(),
     });
+
+    resetOfflineTimer(deviceId);
   });
 
   // ── WebSocket server ─────────────────────────────────────────────────────
@@ -94,6 +116,10 @@ module.exports = function attachMqttBridge(httpServer) {
         case 'remove_device': {
           const { deviceId } = msg;
           mqttClient.unsubscribe([`devices/${deviceId}/status`, `devices/${deviceId}/sensors/#`]);
+          if (offlineTimers.has(deviceId)) {
+            clearTimeout(offlineTimers.get(deviceId));
+            offlineTimers.delete(deviceId);
+          }
           deviceRegistry.delete(deviceId);
           deviceState.delete(deviceId);
           broadcast({ type: 'device_removed', deviceId });

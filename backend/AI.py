@@ -1,4 +1,8 @@
 import os
+import re
+import time
+from collections import defaultdict
+from threading import Lock
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -18,6 +22,23 @@ client = genai.Client(api_key=GEMINI_API_KEY)
 
 MAX_MESSAGE_LENGTH = 1000
 MODEL = "gemini-2.5-flash-lite"
+START_TIME = time.time()
+
+# ── Session management ────────────────────────────────────────────────────────
+SESSION_TTL  = 1800   # 30 min of inactivity before expiry
+MAX_SESSIONS = 500
+
+sessions:            dict = {}
+session_timestamps:  dict = {}
+sessions_lock = Lock()
+
+# ── Rate limiting ─────────────────────────────────────────────────────────────
+request_counts: dict = defaultdict(list)
+RATE_LIMIT  = 20
+RATE_WINDOW = 60
+
+# ── Session-id validation ─────────────────────────────────────────────────────
+VALID_SESSION_RE = re.compile(r'^[a-zA-Z0-9_\-]{1,64}$')
 
 def control_iot_device(device_name: str, action: str) -> dict:
     """
@@ -43,41 +64,70 @@ CONTROL_SYSTEM = (
     "Hãy thực thi lệnh chính xác và báo cáo kết quả rõ ràng cho người dùng."
 )
 
-sessions: dict = {}
+def cleanup_sessions():
+    """Expire sessions idle longer than SESSION_TTL. Must be called under sessions_lock."""
+    now = time.time()
+    expired = [
+        sid for sid, ts in session_timestamps.items()
+        if now - ts > SESSION_TTL
+    ]
+    for sid in expired:
+        sessions.pop(sid, None)
+        session_timestamps.pop(sid, None)
 
 
 def get_or_create_chat(session_id: str, mode: str):
-    if session_id not in sessions:
-        sessions[session_id] = {}
+    with sessions_lock:
+        cleanup_sessions()
+        # Evict oldest session when cap is reached
+        if len(sessions) >= MAX_SESSIONS and session_id not in sessions:
+            oldest = min(session_timestamps, key=session_timestamps.get)
+            sessions.pop(oldest, None)
+            session_timestamps.pop(oldest, None)
 
-    if mode not in sessions[session_id]:
-        if mode == "control":
-            sessions[session_id][mode] = client.chats.create(
-                model=MODEL,
-                config=types.GenerateContentConfig(
-                    system_instruction=CONTROL_SYSTEM,
-                    tools=[control_iot_device],
-                ),
+        session_timestamps[session_id] = time.time()
+        if session_id not in sessions:
+            sessions[session_id] = {}
+
+        if mode not in sessions[session_id]:
+            config = types.GenerateContentConfig(
+                system_instruction=CONTROL_SYSTEM if mode == "control" else CHAT_SYSTEM,
+                tools=[control_iot_device] if mode == "control" else [],
             )
-        else:
             sessions[session_id][mode] = client.chats.create(
-                model=MODEL,
-                config=types.GenerateContentConfig(
-                    system_instruction=CHAT_SYSTEM,
-                ),
+                model=MODEL, config=config
             )
 
-    return sessions[session_id][mode]
+        return sessions[session_id][mode]
+
+
+def is_rate_limited(identifier: str) -> bool:
+    now = time.time()
+    window_start = now - RATE_WINDOW
+    request_counts[identifier] = [
+        ts for ts in request_counts[identifier]
+        if ts > window_start
+    ]
+    if len(request_counts[identifier]) >= RATE_LIMIT:
+        return True
+    request_counts[identifier].append(now)
+    return False
 
 
 @app.route('/chat', methods=['POST'])
 def chat_with_agent():
+    client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+    if is_rate_limited(client_ip):
+        return jsonify({"error": "Too many requests. Please wait."}), 429
+
     if not request.is_json:
         return jsonify({"error": "Request must be JSON."}), 400
 
     data            = request.get_json(silent=True) or {}
     user_msg        = (data.get('message') or '').strip()
     session_id      = data.get('session_id', 'default')
+    if not VALID_SESSION_RE.match(str(session_id)):
+        session_id = 'default'
     mode            = data.get('mode', 'chat')
     control_granted = data.get('control_granted', False)
 
@@ -104,7 +154,12 @@ def chat_with_agent():
 
 @app.route('/health', methods=['GET'])
 def health():
-    return jsonify({"status": "ok"}), 200
+    return jsonify({
+        "status": "ok",
+        "active_sessions": len(sessions),
+        "model": MODEL,
+        "uptime_seconds": round(time.time() - START_TIME),
+    }), 200
 
 
 if __name__ == '__main__':

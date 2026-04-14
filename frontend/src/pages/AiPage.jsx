@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useColors } from '../hooks/useColors'
+import { useLang } from '../contexts/LangContext'
+import { t } from '../i18n'
 
 // ✅ FIXED: use relative path — goes through Vite proxy to ai-service container
 const API_URL = '/chat'
@@ -46,7 +48,7 @@ const WarnIcon = () => (
 )
 
 // ── Confirm Modal ─────────────────────────────────────────────────────────────
-function ConfirmModal({ onConfirm, onCancel, C }) {
+function ConfirmModal({ onConfirm, onCancel, C, lang }) {
   return (
     <div style={{
       position: 'fixed', inset: 0, zIndex: 50,
@@ -68,14 +70,14 @@ function ConfirmModal({ onConfirm, onCancel, C }) {
         </div>
 
         <h3 style={{ fontSize: 17, fontWeight: 700, color: C.heading, margin: '0 0 8px' }}>
-          Xác nhận quyền điều khiển
+          {t('ai_modal_title', lang)}
         </h3>
         <p style={{ fontSize: 13, color: C.subheading, lineHeight: 1.65, margin: '0 0 6px' }}>
-          Bạn đang bật <b style={{ color: '#f59e0b' }}>chế độ điều khiển thiết bị</b>.
-          Ở chế độ này AI có thể <b style={{ color: C.body }}>bật / tắt đèn, quạt và các thiết bị IoT</b> thực tế trong hệ thống của bạn.
+          {t('ai_modal_p1a', lang)}<b style={{ color: '#f59e0b' }}>{t('ai_modal_p1b', lang)}</b>
+          {t('ai_modal_p1c', lang)}<b style={{ color: C.body }}>{t('ai_modal_p1d', lang)}</b>{t('ai_modal_p1e', lang)}
         </p>
         <p style={{ fontSize: 12, color: C.faint, margin: '0 0 22px', lineHeight: 1.5 }}>
-          ⚠️ Chỉ xác nhận nếu bạn thực sự muốn điều khiển thiết bị. Bạn có thể thu hồi quyền bất cứ lúc nào.
+          {t('ai_modal_warn', lang)}
         </p>
 
         <div style={{ display: 'flex', gap: 10 }}>
@@ -85,7 +87,7 @@ function ConfirmModal({ onConfirm, onCancel, C }) {
             color: C.subheading, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit',
             transition: 'all 0.15s',
           }}>
-            Huỷ bỏ
+            {t('ai_modal_cancel', lang)}
           </button>
           <button onClick={onConfirm} style={{
             flex: 1, padding: '10px 0', borderRadius: 9,
@@ -94,7 +96,7 @@ function ConfirmModal({ onConfirm, onCancel, C }) {
             cursor: 'pointer', fontFamily: 'inherit',
             boxShadow: '0 4px 16px #f59e0b44',
           }}>
-            ✓ Cho phép điều khiển
+            {t('ai_modal_confirm', lang)}
           </button>
         </div>
       </div>
@@ -158,11 +160,12 @@ function MessageBubble({ msg, C, isControl }) {
 // ── AiPage ────────────────────────────────────────────────────────────────────
 export default function AiPage() {
   const C = useColors()
+  const { lang } = useLang()
   const [mode, setMode] = useState('chat')
   const [controlGranted, setControlGranted] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
-  const [messages, setMessages] = useState([
-    { role: 'system', text: 'Chat thường · AI sẵn sàng trò chuyện', time: '' }
+  const [messages, setMessages] = useState(() => [
+    { role: 'system', text: t('ai_sys_ready', lang), time: '' }
   ])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
@@ -177,7 +180,7 @@ export default function AiPage() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, isLoading])
 
-  const now = () => new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+  const now = () => new Date().toLocaleTimeString(lang === 'vi' ? 'vi-VN' : 'en-US', { hour: '2-digit', minute: '2-digit' })
 
   const addSystem = (text) =>
     setMessages(prev => [...prev, { role: 'system', text, time: '' }])
@@ -186,7 +189,7 @@ export default function AiPage() {
     if (mode === 'chat') return
     setMode('chat')
     setControlGranted(false)
-    addSystem('Đã chuyển sang Chat thường · Quyền điều khiển đã thu hồi')
+    addSystem(t('ai_sys_to_chat', lang))
   }
 
   const switchToControl = () => {
@@ -195,7 +198,7 @@ export default function AiPage() {
       setShowConfirm(true)
     } else {
       setMode('control')
-      addSystem('⚡ Chế độ điều khiển thiết bị đang hoạt động')
+      addSystem(t('ai_sys_ctrl_active', lang))
     }
   }
 
@@ -203,7 +206,7 @@ export default function AiPage() {
     setShowConfirm(false)
     setControlGranted(true)
     setMode('control')
-    addSystem('⚡ Quyền điều khiển đã được cấp · AI có thể bật/tắt thiết bị')
+    addSystem(t('ai_sys_ctrl_granted', lang))
   }
 
   const handleSend = async () => {
@@ -230,12 +233,12 @@ export default function AiPage() {
       const data = await res.json()
 
       if (!res.ok) {
-        setError(data.error || `Lỗi server: ${res.status}`)
+        setError(data.error || `${t('ai_err_server', lang)}${res.status}`)
       } else {
         setMessages(prev => [...prev, { role: 'assistant', text: data.reply, time: now() }])
       }
     } catch (err) {
-      setError('Không thể kết nối đến server. Vui lòng thử lại.')
+      setError(t('ai_err_connect', lang))
     } finally {
       setIsLoading(false)
       inputRef.current?.focus()
@@ -253,7 +256,6 @@ export default function AiPage() {
   return (
     <div style={{ fontFamily: "'Inter', system-ui, sans-serif", height: '100%', display: 'flex', flexDirection: 'column', gap: 16 }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
         *{box-sizing:border-box}
         textarea:focus{outline:none}
         ::-webkit-scrollbar{width:4px}
@@ -267,7 +269,7 @@ export default function AiPage() {
         <div>
           <h1 style={{ fontSize: 24, fontWeight: 700, color: C.heading, margin: 0 }}>AI Assistant</h1>
           <p style={{ fontSize: 13, color: C.subheading, margin: '3px 0 0' }}>
-            {isControl ? '⚡ Điều khiển thiết bị đang hoạt động' : 'Trò chuyện · Chuyển sang điều khiển khi cần'}
+            {isControl ? t('ai_sub_control', lang) : t('ai_sub_chat', lang)}
           </p>
         </div>
 
@@ -281,7 +283,7 @@ export default function AiPage() {
             fontSize: 13, fontWeight: !isControl ? 600 : 400, cursor: 'pointer',
             transition: 'all 0.2s', fontFamily: 'inherit',
           }}>
-            <ChatIcon /> Chat thường
+            <ChatIcon /> {t('ai_chat_label', lang)}
           </button>
 
           <button onClick={switchToControl} style={{
@@ -292,7 +294,7 @@ export default function AiPage() {
             fontSize: 13, fontWeight: isControl ? 600 : 400, cursor: 'pointer',
             transition: 'all 0.2s', fontFamily: 'inherit',
           }}>
-            <ControlIcon /> Điều khiển
+            <ControlIcon /> {t('ai_control_label', lang)}
             <span style={{ opacity: 0.75, marginLeft: 2 }}>
               {isControl ? <UnlockIcon /> : <LockIcon />}
             </span>
@@ -311,15 +313,15 @@ export default function AiPage() {
         }}>
           <UnlockIcon />
           <span>
-            <b>Quyền điều khiển đang bật.</b>{' '}
-            <span style={{ opacity: 0.75 }}>AI có thể bật/tắt đèn, quạt theo lệnh của bạn.</span>
+            <b>{t('ai_banner_on', lang)}</b>{' '}
+            <span style={{ opacity: 0.75 }}>{t('ai_banner_desc', lang)}</span>
           </span>
           <button onClick={switchToChat} style={{
             marginLeft: 'auto', fontSize: 12, color: '#f59e0b',
             background: '#f59e0b18', border: '1px solid #f59e0b44',
             borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontFamily: 'inherit',
           }}>
-            Thu hồi quyền 🔒
+            {t('ai_revoke', lang)}
           </button>
         </div>
       )}
@@ -387,9 +389,7 @@ export default function AiPage() {
           onChange={e => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
           disabled={isLoading}
-          placeholder={isControl
-            ? '⚡ Nhập lệnh điều khiển... (vd: "Bật đèn phòng khách")'
-            : 'Nhắn gì đó... (Enter gửi · Shift+Enter xuống dòng)'}
+          placeholder={isControl ? t('ai_ph_control', lang) : t('ai_ph_chat', lang)}
           rows={1}
           style={{
             flex: 1, resize: 'none', border: 'none', background: 'transparent',
@@ -423,7 +423,7 @@ export default function AiPage() {
         </button>
       </div>
 
-      {showConfirm && <ConfirmModal onConfirm={confirmControl} onCancel={() => setShowConfirm(false)} C={C} />}
+      {showConfirm && <ConfirmModal onConfirm={confirmControl} onCancel={() => setShowConfirm(false)} C={C} lang={lang} />}
     </div>
   )
 }

@@ -3,6 +3,7 @@
  * Returns a full color palette based on the current theme (dark / light).
  * Import and call this in any page component.
  */
+import { useState, useEffect, useMemo } from 'react'
 import { useTheme } from '../contexts/ThemeContext'
 
 const DARK = {
@@ -85,9 +86,25 @@ const LIGHT = {
 
 export function useColors() {
   const { theme } = useTheme()
-  const effective =
-    theme === 'system'
-      ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+  const [systemDark, setSystemDark] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia
+      ? window.matchMedia('(prefers-color-scheme: dark)').matches
+      : false
+  )
+
+  useEffect(() => {
+    if (theme !== 'system') return
+    if (!window.matchMedia) return
+    const mq = window.matchMedia('(prefers-color-scheme: dark)')
+    const handler = (e) => setSystemDark(e.matches)
+    mq.addEventListener('change', handler)
+    return () => mq.removeEventListener('change', handler)
+  }, [theme])
+
+  return useMemo(() => {
+    const effective = theme === 'system'
+      ? (systemDark ? 'dark' : 'light')
       : theme
-  return effective === 'light' ? LIGHT : DARK
+    return effective === 'light' ? LIGHT : DARK
+  }, [theme, systemDark])
 }

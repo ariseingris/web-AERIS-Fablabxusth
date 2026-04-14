@@ -17,6 +17,8 @@ import UpdatePage from './pages/UpdatePage'
 import SettingsPage from './pages/SettingsPage'
 import HelpPage from './pages/HelpPage'
 import CommunityPage from './pages/CommunityPage'   // ← NEW
+import AdminPage from './pages/AdminPage'
+import AdminRoute from './components/AdminRoute'
 import { useLang } from './contexts/LangContext'
 import { t } from './i18n'
 import Sidebar from './components/Sidebar'
@@ -131,6 +133,11 @@ export default function App() {
           <Route path="help"          element={<HelpPage />} />
           <Route path="iot"           element={<IoTDashboard />} />
           <Route path="community"     element={<CommunityPage />} />  {/* ← NEW */}
+          <Route path="admin"         element={
+            <AdminRoute>
+              <AdminPage />
+            </AdminRoute>
+          } />
         </Route>
 
         {/* ── FALLBACK ── */}

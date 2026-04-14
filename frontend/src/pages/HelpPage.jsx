@@ -89,7 +89,7 @@ export default function HelpPage() {
 
     return (
         <div style={{ fontFamily: "'Inter', system-ui, sans-serif", color: c.body, maxWidth: 720 }}>
-            <style>{`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');*{box-sizing:border-box}textarea:focus{border-color:${c.accentBorder}!important;outline:none;box-shadow:0 0 0 3px ${c.accentBg}}`}</style>
+            <style>{`*{box-sizing:border-box}textarea:focus{border-color:${c.accentBorder}!important;outline:none;box-shadow:0 0 0 3px ${c.accentBg}}`}</style>
 
             <div style={{ marginBottom: 32 }}>
                 <h1 style={{ fontSize: 24, fontWeight: 700, color: c.heading, margin: 0 }}>{t('help_title', lang)}</h1>

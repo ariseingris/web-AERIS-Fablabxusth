@@ -58,7 +58,7 @@ export default function UpdatePage() {
 
   return (
     <div style={{ fontFamily: "'Inter', system-ui, sans-serif", color: C.body, maxWidth: 720 }}>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');*{box-sizing:border-box}`}</style>
+      <style>{`*{box-sizing:border-box}`}</style>
 
       <div style={{ marginBottom: 32 }}>
         <h1 style={{ fontSize: 24, fontWeight: 700, color: C.heading, margin: 0 }}>{t('upd_title', lang)}</h1>

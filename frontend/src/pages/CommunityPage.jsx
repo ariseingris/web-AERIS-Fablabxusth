@@ -1,15 +1,18 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '../supabaseClient'
 import { useColors } from '../hooks/useColors'
+import { useLang } from '../contexts/LangContext'
+import { useAuth } from '../hooks/useAuth'
+import { t } from '../i18n'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-function timeAgo(ts) {
+function timeAgo(ts, lang = 'vi') {
   const diff = Math.floor((Date.now() - new Date(ts)) / 1000)
-  if (diff < 60)         return 'Vừa xong'
-  if (diff < 3600)       return `${Math.floor(diff / 60)} phút trước`
-  if (diff < 86400)      return `${Math.floor(diff / 3600)} giờ trước`
-  if (diff < 2592000)    return `${Math.floor(diff / 86400)} ngày trước`
-  return new Date(ts).toLocaleDateString('vi-VN')
+  if (diff < 60)      return t('comm_just_now', lang)
+  if (diff < 3600)    return `${Math.floor(diff / 60)} ${t('comm_mins_ago', lang)}`
+  if (diff < 86400)   return `${Math.floor(diff / 3600)} ${t('comm_hours_ago', lang)}`
+  if (diff < 2592000) return `${Math.floor(diff / 86400)} ${t('comm_days_ago', lang)}`
+  return new Date(ts).toLocaleDateString(lang === 'vi' ? 'vi-VN' : 'en-US')
 }
 
 function initials(email = '') {
@@ -43,11 +46,28 @@ const IcoSpinner = () => (
   <div style={{ width: 20, height: 20, borderRadius: '50%', border: '2px solid rgba(16,185,129,0.2)', borderTopColor: '#10b981', animation: 'spin 0.7s linear infinite', margin: '0 auto' }} />
 )
 
+function SkeletonCard() {
+  return (
+    <div className="cm-card" style={{ cursor: 'default', pointerEvents: 'none' }}>
+      {[180, 120, 80].map((w, i) => (
+        <div key={i} style={{
+          height: i === 0 ? 16 : 12,
+          width: `${w}px`,
+          maxWidth: '100%',
+          borderRadius: 4,
+          background: 'var(--cm-input-bg)',
+          marginBottom: 10,
+          animation: 'shimmer 1.4s ease infinite',
+          opacity: 0.6,
+        }} />
+      ))}
+    </div>
+  )
+}
+
 // ─── CSS ──────────────────────────────────────────────────────────────────────
 // Colors are driven by --cm-* CSS variables injected by CommunityPage from useColors()
 const CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
-
 .cm-wrap { font-family: 'Inter', system-ui, sans-serif; }
 
 /* ── topbar ── */
@@ -247,12 +267,15 @@ const CSS = `
 @keyframes spin    { to { transform: rotate(360deg); } }
 @keyframes fadeIn  { from { opacity: 0; } to { opacity: 1; } }
 @keyframes slideUp { from { transform: translateY(14px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+@keyframes shimmer { 0%,100%{opacity:0.4} 50%{opacity:0.8} }
 @keyframes msgIn   { from { transform: translateY(5px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 `
 
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function CommunityPage() {
   const C = useColors()
+  const { lang } = useLang()
+  const { isAdmin } = useAuth()
 
   // CSS variables derived from the current theme
   const cssVars = `
@@ -286,16 +309,20 @@ export default function CommunityPage() {
     supabase.auth.getSession().then(({ data: { session } }) => setSession(session))
   }, [])
 
-  // Fetch posts
+  // Fetch posts — admins see all, regular users see only approved
   const fetchPosts = useCallback(async () => {
     setLoading(true)
-    const { data, error } = await supabase
+    let query = supabase
       .from('community_posts')
       .select('*, community_comments(count)')
       .order('created_at', { ascending: false })
+    if (!isAdmin) {
+      query = query.eq('approved', true)
+    }
+    const { data, error } = await query
     if (!error) setPosts(data || [])
     setLoading(false)
-  }, [])
+  }, [isAdmin])
 
   useEffect(() => { fetchPosts() }, [fetchPosts])
 
@@ -364,7 +391,7 @@ export default function CommunityPage() {
               >
                 <IcoBack />
               </button>
-              Thảo luận
+              {t('comm_thread', lang)}
             </div>
           </div>
           <ThreadView
@@ -372,6 +399,7 @@ export default function CommunityPage() {
             session={session}
             liked={myLikes.has(selectedPost.id)}
             onLike={e => handleLike(e, selectedPost)}
+            lang={lang}
           />
         </div>
       </>
@@ -385,30 +413,30 @@ export default function CommunityPage() {
         {/* topbar */}
         <div className="cm-topbar">
           <div className="cm-topbar-title">
-            Cộng đồng thảo luận
+            {t('comm_title', lang)}
             {!loading && <span className="cm-badge">{posts.length}</span>}
           </div>
           <div className="cm-topbar-right">
             <div className="cm-search">
               <IcoSearch />
               <input
-                placeholder="Tìm kiếm bài viết..."
+                placeholder={t('comm_search', lang)}
                 value={search}
                 onChange={e => setSearch(e.target.value)}
               />
             </div>
             <button className="cm-create-btn" onClick={() => setShowModal(true)}>
-              <IcoPlus /> Tạo bài viết
+              <IcoPlus /> {t('comm_create', lang)}
             </button>
           </div>
         </div>
 
         {/* feed */}
         {loading ? (
-          <div style={{ padding: '48px 0' }}><IcoSpinner /></div>
+          [1, 2, 3].map(i => <SkeletonCard key={i} />)
         ) : filteredPosts.length === 0 ? (
           <div className="cm-empty">
-            {search ? 'Không tìm thấy bài viết nào phù hợp.' : 'Chưa có bài viết nào. Hãy tạo bài đầu tiên!'}
+            {search ? t('comm_no_results', lang) : t('comm_empty', lang)}
           </div>
         ) : (
           filteredPosts.map(post => (
@@ -418,6 +446,7 @@ export default function CommunityPage() {
               liked={myLikes.has(post.id)}
               onLike={e => handleLike(e, post)}
               onClick={() => setSelectedPost(post)}
+              lang={lang}
             />
           ))
         )}
@@ -426,6 +455,7 @@ export default function CommunityPage() {
       {showModal && (
         <CreateModal
           session={session}
+          lang={lang}
           onClose={() => setShowModal(false)}
           onCreated={() => { setShowModal(false); fetchPosts() }}
         />
@@ -435,7 +465,7 @@ export default function CommunityPage() {
 }
 
 // ─── PostCard ─────────────────────────────────────────────────────────────────
-function PostCard({ post, liked, onLike, onClick }) {
+function PostCard({ post, liked, onLike, onClick, lang = 'vi' }) {
   const email   = post.user_email || post.user_id || ''
   const inits   = initials(email)
   const bgColor = avatarColor(post.user_id || email)
@@ -446,16 +476,16 @@ function PostCard({ post, liked, onLike, onClick }) {
       <div className="cm-card-header">
         <div className="cm-avatar" style={{ background: bgColor }}>{inits}</div>
         <div>
-          <div className="cm-author">{email.split('@')[0] || 'Ẩn danh'}</div>
-          <div className="cm-time">{timeAgo(post.created_at)}</div>
+          <div className="cm-author">{email.split('@')[0] || t('comm_anon', lang)}</div>
+          <div className="cm-time">{timeAgo(post.created_at, lang)}</div>
         </div>
       </div>
       <div className="cm-title">{post.title}</div>
       <div className="cm-body">{post.body.length > 180 ? post.body.slice(0, 180) + '…' : post.body}</div>
       {post.tags?.length > 0 && (
         <div className="cm-tags">
-          {post.tags.map(t => (
-            <span key={t} className="cm-tag"><IcoTag />{t}</span>
+          {post.tags.map(tag => (
+            <span key={tag} className="cm-tag"><IcoTag />{tag}</span>
           ))}
         </div>
       )}
@@ -464,7 +494,7 @@ function PostCard({ post, liked, onLike, onClick }) {
           <IcoLike filled={liked} /> {post.likes}
         </div>
         <div className="cm-stat">
-          <IcoComment /> {commentCount} bình luận
+          <IcoComment /> {commentCount} {t('comm_comments', lang)}
         </div>
       </div>
     </div>
@@ -472,7 +502,7 @@ function PostCard({ post, liked, onLike, onClick }) {
 }
 
 // ─── ThreadView ───────────────────────────────────────────────────────────────
-function ThreadView({ post, session, liked, onLike }) {
+function ThreadView({ post, session, liked, onLike, lang = 'vi' }) {
   const [comments, setComments] = useState([])
   const [loadingC, setLoadingC] = useState(true)
   const bottomRef = useRef(null)
@@ -519,8 +549,8 @@ function ThreadView({ post, session, liked, onLike }) {
             {initials(post.user_email || post.user_id || '')}
           </div>
           <div>
-            <div className="cm-author">{(post.user_email || post.user_id || '').split('@')[0] || 'Ẩn danh'}</div>
-            <div className="cm-time">{timeAgo(post.created_at)}</div>
+            <div className="cm-author">{(post.user_email || post.user_id || '').split('@')[0] || t('comm_anon', lang)}</div>
+            <div className="cm-time">{timeAgo(post.created_at, lang)}</div>
           </div>
         </div>
         <div className="cm-thread-title">{post.title}</div>
@@ -540,12 +570,12 @@ function ThreadView({ post, session, liked, onLike }) {
       {/* chat */}
       <div className="cm-chat">
         <div className="cm-chat-hdr">
-          <IcoComment /> {commentCount} bình luận
+          <IcoComment /> {commentCount} {t('comm_comments', lang)}
         </div>
         <div className="cm-msgs">
           {loadingC && <div style={{ padding: '20px 0' }}><IcoSpinner /></div>}
           {!loadingC && comments.length === 0 && (
-            <div className="cm-empty">Chưa có bình luận nào. Hãy là người đầu tiên!</div>
+            <div className="cm-empty">{t('comm_no_comments', lang)}</div>
           )}
           {comments.map(c => {
             const isOwn = c.user_id === session?.user?.id
@@ -557,8 +587,8 @@ function ThreadView({ post, session, liked, onLike }) {
                 </div>
                 <div className={`cm-msg-wrap ${isOwn ? 'own' : ''}`}>
                   <div className={`cm-msg-meta ${isOwn ? 'own' : ''}`}>
-                    <span className="cm-msg-name">{cEmail.split('@')[0] || 'Ẩn danh'}</span>
-                    <span className="cm-msg-time">{timeAgo(c.created_at)}</span>
+                    <span className="cm-msg-name">{cEmail.split('@')[0] || t('comm_anon', lang)}</span>
+                    <span className="cm-msg-time">{timeAgo(c.created_at, lang)}</span>
                   </div>
                   <div className={`cm-bubble ${isOwn ? 'own' : ''}`}>{c.body}</div>
                 </div>
@@ -569,10 +599,10 @@ function ThreadView({ post, session, liked, onLike }) {
         </div>
 
         {session ? (
-          <ChatInput postId={post.id} userId={session.user.id} />
+          <ChatInput postId={post.id} userId={session.user.id} lang={lang} />
         ) : (
           <div style={{ padding: '14px 18px', color: 'var(--cm-faint)', fontSize: 13, borderTop: '1px solid var(--cm-card-border)', textAlign: 'center' }}>
-            Đăng nhập để bình luận
+            {t('comm_login_prompt', lang)}
           </div>
         )}
       </div>
@@ -581,7 +611,7 @@ function ThreadView({ post, session, liked, onLike }) {
 }
 
 // ─── ChatInput ────────────────────────────────────────────────────────────────
-function ChatInput({ postId, userId }) {
+function ChatInput({ postId, userId, lang = 'vi' }) {
   const [text, setText]       = useState('')
   const [sending, setSending] = useState(false)
 
@@ -601,7 +631,7 @@ function ChatInput({ postId, userId }) {
       <textarea
         className="cm-textarea"
         rows={1}
-        placeholder="Viết bình luận của bạn... (Enter để gửi)"
+        placeholder={t('comm_input_ph', lang)}
         value={text}
         onChange={e => setText(e.target.value)}
         onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
@@ -614,7 +644,7 @@ function ChatInput({ postId, userId }) {
 }
 
 // ─── CreateModal ──────────────────────────────────────────────────────────────
-function CreateModal({ session, onClose, onCreated }) {
+function CreateModal({ session, onClose, onCreated, lang = 'vi' }) {
   const [title, setTitle]       = useState('')
   const [body, setBody]         = useState('')
   const [tagsRaw, setTagsRaw]   = useState('')
@@ -622,8 +652,8 @@ function CreateModal({ session, onClose, onCreated }) {
   const [err, setErr]           = useState('')
 
   const submit = async () => {
-    if (!title.trim() || !body.trim()) { setErr('Vui lòng điền tiêu đề và nội dung.'); return }
-    if (!session) { setErr('Bạn cần đăng nhập để đăng bài.'); return }
+    if (!title.trim() || !body.trim()) { setErr(t('comm_err_fields', lang)); return }
+    if (!session) { setErr(t('comm_err_login', lang)); return }
     setSaving(true); setErr('')
     const tags = tagsRaw.split(',').map(t => t.trim()).filter(Boolean)
     const { error } = await supabase.from('community_posts').insert({
@@ -640,28 +670,28 @@ function CreateModal({ session, onClose, onCreated }) {
     <div className="cm-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="cm-modal">
         <div className="cm-modal-hdr">
-          <span className="cm-modal-title">Tạo bài viết mới</span>
+          <span className="cm-modal-title">{t('comm_modal_title', lang)}</span>
           <button className="cm-modal-close" onClick={onClose}><IcoClose /></button>
         </div>
         <div className="cm-modal-body">
           <div>
-            <div className="cm-field-lbl">Tiêu đề *</div>
-            <input className="cm-field-inp" placeholder="Nhập tiêu đề câu hỏi của bạn..." value={title} onChange={e => setTitle(e.target.value)} />
+            <div className="cm-field-lbl">{t('comm_field_title', lang)}</div>
+            <input className="cm-field-inp" placeholder={t('comm_title_ph', lang)} value={title} onChange={e => setTitle(e.target.value)} />
           </div>
           <div>
-            <div className="cm-field-lbl">Nội dung *</div>
-            <textarea className="cm-field-inp cm-field-ta" placeholder="Mô tả chi tiết vấn đề..." value={body} onChange={e => setBody(e.target.value)} />
+            <div className="cm-field-lbl">{t('comm_field_body', lang)}</div>
+            <textarea className="cm-field-inp cm-field-ta" placeholder={t('comm_body_ph', lang)} value={body} onChange={e => setBody(e.target.value)} />
           </div>
           <div>
-            <div className="cm-field-lbl">Tags <span style={{ fontWeight: 400, textTransform: 'none', fontSize: 11 }}>(cách nhau bằng dấu phẩy)</span></div>
-            <input className="cm-field-inp" placeholder="AI, IoT, MQTT, Python..." value={tagsRaw} onChange={e => setTagsRaw(e.target.value)} />
+            <div className="cm-field-lbl">{t('comm_field_tags', lang)} <span style={{ fontWeight: 400, textTransform: 'none', fontSize: 11 }}>({t('comm_tags_hint', lang)})</span></div>
+            <input className="cm-field-inp" placeholder={t('comm_tags_ph', lang)} value={tagsRaw} onChange={e => setTagsRaw(e.target.value)} />
           </div>
           {err && <div className="cm-err">{err}</div>}
         </div>
         <div className="cm-modal-ftr">
-          <button className="cm-btn-ghost" onClick={onClose}>Hủy</button>
+          <button className="cm-btn-ghost" onClick={onClose}>{t('comm_cancel', lang)}</button>
           <button className="cm-create-btn" onClick={submit} disabled={saving || !title.trim() || !body.trim()}>
-            {saving ? 'Đang đăng...' : <><IcoPlus /> Đăng bài</>}
+            {saving ? t('comm_submitting', lang) : <><IcoPlus /> {t('comm_submit', lang)}</>}
           </button>
         </div>
       </div>

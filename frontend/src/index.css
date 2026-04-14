@@ -1,3 +1,4 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=DM+Mono:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap');
 @import "tailwindcss";
 
 /* ── Reset ──────────────────────────────────────────── */
@@ -20,6 +21,9 @@
   /* Theme variables */
   --bg-color: #0a1a12;
   --text-color: #e8f5e9;
+  /* --bg-color and --text-color affect the root body background only.
+     All component-level colors are handled by useColors() hook
+     which returns theme-aware inline style values. */
 }
 
 body.light-theme {
@@ -85,4 +89,18 @@ button:focus-visible {
 ::selection {
   background: #065f46;
   color: #fff;
+}
+
+/* ── Smooth theme transitions ───────────────────────── */
+/* Applies to all elements so background/border/color cross-fade on theme switch */
+* {
+  transition-property: background-color, border-color, color;
+  transition-duration: 0.2s;
+  transition-timing-function: ease;
+}
+
+/* Override: elements with explicit animations or transforms should not inherit this */
+*[style*="animation"],
+*[style*="transform"] {
+  transition: none;
 }

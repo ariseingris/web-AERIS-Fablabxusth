@@ -1,7 +1,8 @@
-import { createContext, useContext, useState } from 'react'
+import { createContext, useContext, useState, useEffect } from 'react'
 import { NavLink } from 'react-router-dom'
 import { useTheme } from '../contexts/ThemeContext'
 import { useLang } from '../contexts/LangContext'
+import { useAuth } from '../hooks/useAuth'
 import { t } from '../i18n'
 
 // ---------------------------------------------------------------------------
@@ -76,6 +77,12 @@ const IconCommunity = () => (
     <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
   </svg>
 )
+const IconShield = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+    fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+  </svg>
+)
 
 // ---------------------------------------------------------------------------
 // Context
@@ -124,12 +131,23 @@ export default function Sidebar({ session, handleLogout }) {
   const [expanded, setExpanded] = useState(false)
   const { theme } = useTheme()
   const { lang } = useLang()
+  const { isAdmin } = useAuth()
 
-  const effectiveTheme =
-    theme === 'system'
-      ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
-      : theme
+  const [systemDark, setSystemDark] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia
+      ? window.matchMedia('(prefers-color-scheme: dark)').matches
+      : false
+  )
+  useEffect(() => {
+    if (theme !== 'system') return
+    if (!window.matchMedia) return
+    const mq = window.matchMedia('(prefers-color-scheme: dark)')
+    const handler = (e) => setSystemDark(e.matches)
+    mq.addEventListener('change', handler)
+    return () => mq.removeEventListener('change', handler)
+  }, [theme])
 
+  const effectiveTheme = theme === 'system' ? (systemDark ? 'dark' : 'light') : theme
   const C = effectiveTheme === 'light' ? LIGHT : DARK
 
   const userEmail = session?.user?.email || 'user@example.com'
@@ -174,6 +192,9 @@ export default function Sidebar({ session, handleLogout }) {
           <SidebarItem icon={<IconBot />}       text={t('nav_ai', lang)}         to="/dashboard/ai" />
           <SidebarItem icon={<IconIoT />}       text={t('nav_iot', lang)}        to="/dashboard/iot" />
           <SidebarItem icon={<IconCommunity />} text={t('nav_community', lang)}  to="/dashboard/community" />
+          {isAdmin && (
+            <SidebarItem icon={<IconShield />} text={t('nav_admin', lang)} to="/dashboard/admin" />
+          )}
           <li style={{ margin: '6px 0', borderTop: `1px solid ${C.divider}` }} />
           <SidebarItem icon={<IconRefresh />}   text={t('nav_update', lang)}     to="/dashboard/update" />
           <SidebarItem icon={<IconSettings />}  text={t('nav_settings', lang)}   to="/dashboard/settings" />

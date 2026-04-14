@@ -1,3 +1,4 @@
+// Login page intentionally uses fixed dark theme — does not use useColors()
 import { useState } from 'react'
 import { supabase } from '../supabaseClient'
 import { useNavigate } from 'react-router-dom'

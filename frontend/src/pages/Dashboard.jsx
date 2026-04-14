@@ -94,12 +94,12 @@ export default function Dashboard() {
   const stats = [
     {
       icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>,
-      label: t('dash_users', lang), value: '2,847', sub: t('dash_vs_prev', lang), trend: 12.5,
+      label: t('dash_users', lang), value: '15/20', sub: t('dash_vs_prev', lang), trend: 12.5,
       sparkData: [30, 45, 38, 52, 48, 60, 55, 70, 65, 80, 75, 90],
     },
     {
       icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18" /><polyline points="17 6 23 6 23 12" /></svg>,
-      label: t('dash_revenue', lang), value: '₫48.2M', sub: t('dash_vs_prev', lang), trend: 8.3,
+      label: t('dash_revenue', lang), value: '8/10 device/s', sub: t('dash_vs_prev', lang), trend: 8.3,
       sparkData: [20, 28, 25, 35, 30, 40, 38, 50, 45, 55, 52, 62],
     },
     {
@@ -133,7 +133,7 @@ export default function Dashboard() {
 
   return (
     <div style={{ fontFamily: "'Inter', system-ui, sans-serif", color: C.body, minHeight: '100vh' }}>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap');*{box-sizing:border-box}`}</style>
+      <style>{`*{box-sizing:border-box}`}</style>
 
       {/* Welcome banner */}
       <div style={{ marginBottom: 32 }}>
@@ -208,7 +208,7 @@ export default function Dashboard() {
         </div>
 
       </div>
-      
+
       <div style={{ marginTop: 32, paddingBottom: 24, textAlign: 'center', fontSize: 13, color: C.muted }}>
         Powered by AERIS Core Engine © 2026.
       </div>
