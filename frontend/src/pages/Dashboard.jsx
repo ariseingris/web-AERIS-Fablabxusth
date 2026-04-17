@@ -3,6 +3,7 @@ import { supabase } from '../supabaseClient'
 import { useLang } from '../contexts/LangContext'
 import { t } from '../i18n'
 import { useColors } from '../hooks/useColors'
+import { useAuth } from '../hooks/useAuth'
 
 function Sparkline({ data, color = '#10b981' }) {
   const max = Math.max(...data)
@@ -84,12 +85,11 @@ function ActivityItem({ icon, title, time, color, C }) {
 export default function Dashboard() {
   const { lang } = useLang()
   const C = useColors()
-  const [session, setSession] = useState(null)
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => setSession(session))
-  }, [])
+  const { profile, user } = useAuth()
 
-  const userName = session?.user?.email?.split('@')[0] || (lang === 'vi' ? 'Người dùng' : 'User')
+  const userName = profile?.full_name
+    || user?.email?.split('@')[0]
+    || (lang === 'vi' ? 'Người dùng' : 'User')
 
   const stats = [
     {

@@ -4,6 +4,10 @@ import { useColors } from '../hooks/useColors'
 import { useLang } from '../contexts/LangContext'
 import { useAuth } from '../hooks/useAuth'
 import { t } from '../i18n'
+import ReactMarkdown from 'react-markdown'
+import toast from 'react-hot-toast'
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function timeAgo(ts, lang = 'vi') {
@@ -269,6 +273,45 @@ const CSS = `
 @keyframes slideUp { from { transform: translateY(14px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 @keyframes shimmer { 0%,100%{opacity:0.4} 50%{opacity:0.8} }
 @keyframes msgIn   { from { transform: translateY(5px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+@keyframes toastIn { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:translateY(0); } }
+
+/* ── toast ── */
+.cm-toast {
+  position: fixed; bottom: 24px; right: 24px; z-index: 9999;
+  padding: 11px 20px; border-radius: 10px;
+  font-size: 13px; font-weight: 500; color: #fff;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.35);
+  animation: toastIn 0.22s ease;
+  max-width: 340px; pointer-events: none;
+}
+.cm-toast.success { background: #10b981; }
+.cm-toast.error   { background: #ef4444; }
+
+/* ── tag chip ── */
+.cm-chip {
+  font-size: 11px; padding: 3px 10px; border-radius: 20px; cursor: pointer;
+  border: 1px solid rgba(16,185,129,0.3); transition: all 0.15s; user-select: none;
+  background: rgba(16,185,129,0.06); color: #10b981;
+}
+.cm-chip:hover  { background: rgba(16,185,129,0.14); }
+.cm-chip.active { background: rgba(16,185,129,0.22); border-color: #10b981; font-weight: 600; }
+
+/* ── preview tabs ── */
+.cm-tabs { display: flex; gap: 0; border-bottom: 1px solid var(--cm-input-border); margin-bottom: 0; }
+.cm-tab {
+  padding: 6px 16px; font-size: 12.5px; font-weight: 500; cursor: pointer;
+  border: none; border-bottom: 2px solid transparent; background: none;
+  color: var(--cm-faint); font-family: 'Inter', sans-serif; transition: all 0.15s;
+  margin-bottom: -1px;
+}
+.cm-tab.active { color: #10b981; border-bottom-color: #10b981; }
+.cm-preview-box {
+  min-height: 110px; max-height: 240px; overflow-y: auto;
+  background: var(--cm-input-bg); border: 1px solid var(--cm-input-border);
+  border-top: none; border-radius: 0 0 9px 9px; padding: 12px 14px;
+  font-size: 13.5px; color: var(--cm-text); line-height: 1.7;
+}
+.cm-preview-box img { max-width: 100%; border-radius: 6px; }
 `
 
 // ─── Main component ───────────────────────────────────────────────────────────
@@ -294,35 +337,94 @@ export default function CommunityPage() {
       --cm-hover-bg:         ${C.cardBgHover};
       --cm-accent-border:    ${C.accentBorder};
     }
+    .cm-markdown-preview img { max-width: 100%; border-radius: 8px; margin: 8px 0; }
   `
 
   const [session, setSession]         = useState(null)
   const [posts, setPosts]             = useState([])
+  const [authors, setAuthors]         = useState({})
   const [loading, setLoading]         = useState(true)
   const [search, setSearch]           = useState('')
   const [selectedPost, setSelectedPost] = useState(null)
   const [myLikes, setMyLikes]         = useState(new Set())
   const [showModal, setShowModal]     = useState(false)
+  const [currentTab, setCurrentTab]   = useState('Recommended')
+  const showToast = (msg, type = 'success') => {
+    if (type === 'success') toast.success(msg)
+    else toast.error(msg)
+  }
+
+  const TABS = ['Recommended', 'Latest', 'Trending', 'Following']
 
   // Fetch current session
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => setSession(session))
   }, [])
 
-  // Fetch posts — admins see all, regular users see only approved
   const fetchPosts = useCallback(async () => {
     setLoading(true)
-    let query = supabase
-      .from('community_posts')
-      .select('*, community_comments(count)')
-      .order('created_at', { ascending: false })
-    if (!isAdmin) {
-      query = query.eq('approved', true)
+    const s = (await supabase.auth.getSession()).data?.session
+    const userId = s?.user?.id
+
+    const fetchAuthors = async (posts) => {
+      const authorIds = [...new Set(posts.map(p => p.author_id).filter(Boolean))]
+      if (!authorIds.length) return {}
+      const { data } = await supabase
+        .from('profiles')
+        .select('id, full_name, avatar_url, email')
+        .in('id', authorIds)
+      return Object.fromEntries((data || []).map(a => [a.id, a]))
     }
-    const { data, error } = await query
-    if (!error) setPosts(data || [])
+
+    // Merge author's own hidden posts so they can see content that was hidden by moderation
+    const mergeOwnHidden = async (posts) => {
+      if (!userId || isAdmin) return posts
+      const { data: hidden } = await supabase.from('community_posts')
+        .select('*, community_comments(count)')
+        .eq('status', 'hidden')
+        .eq('author_id', userId)
+        .order('created_at', { ascending: false })
+      if (!hidden?.length) return posts
+      const seen = new Set(posts.map(p => p.id))
+      return [...posts, ...hidden.filter(p => !seen.has(p.id))]
+    }
+
+    if (currentTab === 'Latest' || currentTab === 'Following') {
+      let query = supabase.from('community_posts').select('*, community_comments(count)').order('created_at', { ascending: false })
+      if (!isAdmin) query = query.in('status', ['published', 'flagged'])
+      const { data } = await query
+      const merged = await mergeOwnHidden(data || [])
+      merged.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+      const authorsMap = await fetchAuthors(merged)
+      setAuthors(authorsMap)
+      setPosts(merged)
+      setLoading(false)
+      return
+    }
+
+    let url = `${API_URL}/api/feed/recommended`
+    if (currentTab === 'Trending') url = `${API_URL}/api/feed/trending`
+
+    try {
+      const resp = await fetch(url, {
+        headers: s?.access_token ? { 'Authorization': `Bearer ${s.access_token}` } : {}
+      })
+      if (resp.ok) {
+        const data = await resp.json()
+        const merged = await mergeOwnHidden(data.posts || [])
+        const authorsMap = await fetchAuthors(merged)
+        setAuthors(authorsMap)
+        setPosts(merged)
+      } else {
+        setAuthors({})
+        setPosts([])
+      }
+    } catch(e) {
+      setAuthors({})
+      setPosts([])
+    }
     setLoading(false)
-  }, [isAdmin])
+  }, [currentTab, isAdmin])
 
   useEffect(() => { fetchPosts() }, [fetchPosts])
 
@@ -350,6 +452,21 @@ export default function CommunityPage() {
     return () => supabase.removeChannel(channel)
   }, [fetchPosts])
 
+  const handleInteract = async (postId, type) => {
+    try {
+        const s = (await supabase.auth.getSession()).data?.session
+        if (!s) return
+        await fetch(`${API_URL}/api/feed/interact`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${s.access_token}`
+            },
+            body: JSON.stringify({ postId, type })
+        })
+    } catch(e) {}
+  }
+
   const handleLike = async (e, post) => {
     e.stopPropagation()
     if (!session) return
@@ -367,12 +484,18 @@ export default function CommunityPage() {
     } else {
       await supabase.from('community_likes').insert({ user_id: userId, post_id: postId })
       await supabase.rpc('increment_post_likes', { post_id: postId })
+      handleInteract(postId, 'like')
     }
   }
 
+  const handleView = (post) => {
+      setSelectedPost(post)
+      handleInteract(post.id, 'view')
+  }
+
   const filteredPosts = posts.filter(p =>
-    p.title.toLowerCase().includes(search.toLowerCase()) ||
-    p.body.toLowerCase().includes(search.toLowerCase()) ||
+    (p.title || '').toLowerCase().includes(search.toLowerCase()) ||
+    (p.body || '').toLowerCase().includes(search.toLowerCase()) ||
     (p.tags || []).some(t => t.toLowerCase().includes(search.toLowerCase()))
   )
 
@@ -396,9 +519,11 @@ export default function CommunityPage() {
           </div>
           <ThreadView
             post={posts.find(p => p.id === selectedPost.id) || selectedPost}
+            author={authors[selectedPost.author_id]}
             session={session}
             liked={myLikes.has(selectedPost.id)}
             onLike={e => handleLike(e, selectedPost)}
+            handleInteract={handleInteract}
             lang={lang}
           />
         </div>
@@ -431,25 +556,51 @@ export default function CommunityPage() {
           </div>
         </div>
 
-        {/* feed */}
-        {loading ? (
-          [1, 2, 3].map(i => <SkeletonCard key={i} />)
-        ) : filteredPosts.length === 0 ? (
-          <div className="cm-empty">
-            {search ? t('comm_no_results', lang) : t('comm_empty', lang)}
-          </div>
-        ) : (
-          filteredPosts.map(post => (
-            <PostCard
-              key={post.id}
-              post={post}
-              liked={myLikes.has(post.id)}
-              onLike={e => handleLike(e, post)}
-              onClick={() => setSelectedPost(post)}
-              lang={lang}
-            />
-          ))
-        )}
+        <div style={{ display: 'flex', gap: 14, marginBottom: 20 }}>
+            {TABS.map(tOption => (
+                <button
+                    key={tOption}
+                    onClick={() => setCurrentTab(tOption)}
+                    style={{
+                        padding: '6px 14px', borderRadius: 20, fontSize: 13, fontWeight: 500, cursor: 'pointer',
+                        border: currentTab === tOption ? '1px solid #10b981' : '1px solid var(--cm-card-border)',
+                        background: currentTab === tOption ? 'rgba(16,185,129,0.1)' : 'transparent',
+                        color: currentTab === tOption ? '#10b981' : 'var(--cm-faint)',
+                        transition: 'all 0.2s', fontFamily: 'inherit'
+                    }}
+                >
+                    {tOption}
+                </button>
+            ))}
+        </div>
+
+        {/* feed layout */}
+        <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start' }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+                {loading ? (
+                  [1, 2, 3].map(i => <SkeletonCard key={i} />)
+                ) : filteredPosts.length === 0 ? (
+                  <div className="cm-empty">
+                    {search ? t('comm_no_results', lang) : t('comm_empty', lang)}
+                  </div>
+                ) : (
+                  filteredPosts.map(post => (
+                    <PostCard
+                      key={post.id}
+                      post={post}
+                      author={authors[post.author_id]}
+                      liked={myLikes.has(post.id)}
+                      onLike={e => handleLike(e, post)}
+                      onClick={() => handleView(post)}
+                      lang={lang}
+                      currentUserId={session?.user?.id}
+                    />
+                  ))
+                )}
+            </div>
+            
+            <CommunitySidebar C={C} lang={lang} />
+        </div>
       </div>
 
       {showModal && (
@@ -457,31 +608,113 @@ export default function CommunityPage() {
           session={session}
           lang={lang}
           onClose={() => setShowModal(false)}
-          onCreated={() => { setShowModal(false); fetchPosts() }}
+          onCreated={(newPost) => { setShowModal(false); if (newPost) setPosts(prev => [newPost, ...prev]); showToast(t('comm_post_published', lang) || 'Post published!', 'success') }}
         />
       )}
     </>
   )
 }
 
+function CommunitySidebar({ C, lang }) {
+    return (
+        <div style={{ width: 260, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 20 }}>
+            {/* Popular Topics */}
+            <div style={{ background: C?.cardBg || 'var(--cm-card-bg)', border: '1px solid var(--cm-card-border)', borderRadius: 14, padding: 20 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--cm-text)', marginBottom: 14 }}>Popular Topics</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                    {['agriculture', 'plants', 'research', 'iot', 'aeris'].map(t => (
+                        <span key={t} style={{ fontSize: 12, color: '#10b981', background: 'rgba(16,185,129,0.1)', padding: '2px 8px', borderRadius: 4, cursor: 'pointer' }}>#{t}</span>
+                    ))}
+                </div>
+            </div>
+            
+            {/* Suggested Users */}
+            <div style={{ background: C?.cardBg || 'var(--cm-card-bg)', border: '1px solid var(--cm-card-border)', borderRadius: 14, padding: 20 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--cm-text)', marginBottom: 14 }}>Suggested Users</div>
+                <div style={{ fontSize: 13, color: 'var(--cm-muted)' }}>Top contributors will appear here.</div>
+            </div>
+            
+            {/* Your Groups */}
+            <div style={{ background: C?.cardBg || 'var(--cm-card-bg)', border: '1px solid var(--cm-card-border)', borderRadius: 14, padding: 20 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--cm-text)', marginBottom: 14 }}>Your Groups</div>
+                <div style={{ fontSize: 13, color: 'var(--cm-muted)' }}>Join a group to interact more closely.</div>
+            </div>
+        </div>
+    )
+}
+
 // ─── PostCard ─────────────────────────────────────────────────────────────────
-function PostCard({ post, liked, onLike, onClick, lang = 'vi' }) {
-  const email   = post.user_email || post.user_id || ''
-  const inits   = initials(email)
-  const bgColor = avatarColor(post.user_id || email)
+function PostCard({ post, author, liked, onLike, onClick, lang = 'vi', currentUserId }) {
+  const authorName = author?.full_name
+    || author?.email?.split('@')[0]
+    || (post.user_email || post.user_id || '').split('@')[0]
+    || t('comm_anon', lang)
+
+  const avatarUrl = author?.avatar_url
+    ? author.avatar_url
+    : `https://ui-avatars.com/api/?name=${encodeURIComponent(authorName)}&background=059669&color=fff&bold=true`
+
   const commentCount = post.community_comments?.[0]?.count ?? 0
+  const isAuthor = currentUserId && (post.author_id === currentUserId)
+  const isUnderReview = post.ai_classification === 'uncertain'
+  const isHidden = post.status === 'hidden'
+  const isRemoved = post.status === 'removed'
+
+  // Hidden posts: only author sees them with a notice
+  if ((isHidden || isRemoved) && !isAuthor) return null
 
   return (
-    <div className="cm-card" onClick={onClick}>
+    <div className="cm-card" onClick={onClick} style={isHidden || isRemoved ? { opacity: 0.6 } : {}}>
       <div className="cm-card-header">
-        <div className="cm-avatar" style={{ background: bgColor }}>{inits}</div>
-        <div>
-          <div className="cm-author">{email.split('@')[0] || t('comm_anon', lang)}</div>
+        <img
+          src={avatarUrl}
+          alt={authorName}
+          style={{
+            width: 36,
+            height: 36,
+            borderRadius: 10,
+            objectFit: 'cover',
+            flexShrink: 0,
+          }}
+        />
+        <div style={{ flex: 1 }}>
+          <div className="cm-author">{authorName}</div>
           <div className="cm-time">{timeAgo(post.created_at, lang)}</div>
         </div>
+        {isUnderReview && (
+          <span style={{
+            fontSize: 10, padding: '2px 8px', borderRadius: 10,
+            background: 'rgba(251,191,36,0.1)', color: '#fbbf24',
+            border: '1px solid rgba(251,191,36,0.25)', fontWeight: 500, flexShrink: 0,
+          }}>Under review</span>
+        )}
+        {(isHidden || isRemoved) && isAuthor && (
+          <span
+            style={{
+              fontSize: 10, padding: '2px 8px', borderRadius: 10,
+              background: 'rgba(239,68,68,0.08)', color: '#ef4444',
+              border: '1px solid rgba(239,68,68,0.2)', fontWeight: 500, flexShrink: 0,
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            {isRemoved ? 'Removed by admin' : (
+              <>
+                Hidden by moderation —{' '}
+                <span
+                  style={{ textDecoration: 'underline', cursor: 'pointer' }}
+                  onClick={e => { e.stopPropagation(); toast('Appeal submitted. Our team will review your post.', { icon: '📩' }) }}
+                >
+                  appeal?
+                </span>
+              </>
+            )}
+          </span>
+        )}
       </div>
       <div className="cm-title">{post.title}</div>
-      <div className="cm-body">{post.body.length > 180 ? post.body.slice(0, 180) + '…' : post.body}</div>
+      <div className="cm-body cm-markdown-preview">
+        <ReactMarkdown>{(post.body || '').length > 250 ? post.body.slice(0, 250) + '…' : (post.body || '')}</ReactMarkdown>
+      </div>
       {post.tags?.length > 0 && (
         <div className="cm-tags">
           {post.tags.map(tag => (
@@ -502,9 +735,10 @@ function PostCard({ post, liked, onLike, onClick, lang = 'vi' }) {
 }
 
 // ─── ThreadView ───────────────────────────────────────────────────────────────
-function ThreadView({ post, session, liked, onLike, lang = 'vi' }) {
+function ThreadView({ post, author, session, liked, onLike, handleInteract, lang = 'vi' }) {
   const [comments, setComments] = useState([])
   const [loadingC, setLoadingC] = useState(true)
+  const [commentAuthors, setCommentAuthors] = useState({})
   const bottomRef = useRef(null)
 
   const fetchComments = useCallback(async () => {
@@ -514,6 +748,17 @@ function ThreadView({ post, session, liked, onLike, lang = 'vi' }) {
       .eq('post_id', post.id)
       .order('created_at', { ascending: true })
     setComments(data || [])
+
+    // Fetch comment authors
+    const commentAuthorIds = [...new Set((data || []).map(c => c.user_id).filter(Boolean))]
+    if (commentAuthorIds.length) {
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, full_name, avatar_url, email')
+        .in('id', commentAuthorIds)
+      setCommentAuthors(Object.fromEntries((profiles || []).map(a => [a.id, a])))
+    }
+
     setLoadingC(false)
   }, [post.id])
 
@@ -540,21 +785,38 @@ function ThreadView({ post, session, liked, onLike, lang = 'vi' }) {
   const bgColor = avatarColor(session?.user?.id || email)
   const commentCount = comments.length
 
+  const authorName = author?.full_name
+    || author?.email?.split('@')[0]
+    || (post.user_email || post.user_id || '').split('@')[0]
+    || t('comm_anon', lang)
+
+  const authorAvatarUrl = author?.avatar_url
+    ? author.avatar_url
+    : `https://ui-avatars.com/api/?name=${encodeURIComponent(authorName)}&background=059669&color=fff&bold=true`
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
       {/* question */}
       <div className="cm-thread-q">
         <div className="cm-card-header">
-          <div className="cm-avatar" style={{ background: avatarColor(post.user_id) }}>
-            {initials(post.user_email || post.user_id || '')}
-          </div>
+          <img
+            src={authorAvatarUrl}
+            alt={authorName}
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 10,
+              objectFit: 'cover',
+              flexShrink: 0,
+            }}
+          />
           <div>
-            <div className="cm-author">{(post.user_email || post.user_id || '').split('@')[0] || t('comm_anon', lang)}</div>
+            <div className="cm-author">{authorName}</div>
             <div className="cm-time">{timeAgo(post.created_at, lang)}</div>
           </div>
         </div>
         <div className="cm-thread-title">{post.title}</div>
-        <div className="cm-thread-body">{post.body}</div>
+        <div className="cm-thread-body cm-markdown-preview"><ReactMarkdown>{post.body}</ReactMarkdown></div>
         {post.tags?.length > 0 && (
           <div className="cm-tags">
             {post.tags.map(t => <span key={t} className="cm-tag"><IcoTag />{t}</span>)}
@@ -579,18 +841,34 @@ function ThreadView({ post, session, liked, onLike, lang = 'vi' }) {
           )}
           {comments.map(c => {
             const isOwn = c.user_id === session?.user?.id
-            const cEmail = c.user_email || c.user_id || ''
+            const cAuthor = commentAuthors[c.user_id]
+            const cName = cAuthor?.full_name
+              || cAuthor?.email?.split('@')[0]
+              || (c.user_email || c.user_id || '').split('@')[0]
+              || t('comm_anon', lang)
+            const cAvatarUrl = cAuthor?.avatar_url
+              ? cAuthor.avatar_url
+              : `https://ui-avatars.com/api/?name=${encodeURIComponent(cName)}&background=059669&color=fff&bold=true`
             return (
               <div key={c.id} className={`cm-msg ${isOwn ? 'own' : ''}`}>
-                <div className="cm-msg-av" style={{ background: avatarColor(c.user_id) }}>
-                  {initials(cEmail)}
-                </div>
+                <img
+                  src={cAvatarUrl}
+                  alt={cName}
+                  style={{
+                    width: 30,
+                    height: 30,
+                    borderRadius: 8,
+                    objectFit: 'cover',
+                    flexShrink: 0,
+                    marginTop: 2,
+                  }}
+                />
                 <div className={`cm-msg-wrap ${isOwn ? 'own' : ''}`}>
                   <div className={`cm-msg-meta ${isOwn ? 'own' : ''}`}>
-                    <span className="cm-msg-name">{cEmail.split('@')[0] || t('comm_anon', lang)}</span>
+                    <span className="cm-msg-name">{cName}</span>
                     <span className="cm-msg-time">{timeAgo(c.created_at, lang)}</span>
                   </div>
-                  <div className={`cm-bubble ${isOwn ? 'own' : ''}`}>{c.body}</div>
+                  <div className={`cm-bubble ${isOwn ? 'own' : ''}`}><ReactMarkdown>{c.body}</ReactMarkdown></div>
                 </div>
               </div>
             )
@@ -599,7 +877,7 @@ function ThreadView({ post, session, liked, onLike, lang = 'vi' }) {
         </div>
 
         {session ? (
-          <ChatInput postId={post.id} userId={session.user.id} lang={lang} />
+          <ChatInput postId={post.id} userId={session.user.id} handleInteract={handleInteract} lang={lang} />
         ) : (
           <div style={{ padding: '14px 18px', color: 'var(--cm-faint)', fontSize: 13, borderTop: '1px solid var(--cm-card-border)', textAlign: 'center' }}>
             {t('comm_login_prompt', lang)}
@@ -611,7 +889,7 @@ function ThreadView({ post, session, liked, onLike, lang = 'vi' }) {
 }
 
 // ─── ChatInput ────────────────────────────────────────────────────────────────
-function ChatInput({ postId, userId, lang = 'vi' }) {
+function ChatInput({ postId, userId, handleInteract, lang = 'vi' }) {
   const [text, setText]       = useState('')
   const [sending, setSending] = useState(false)
 
@@ -624,6 +902,7 @@ function ChatInput({ postId, userId, lang = 'vi' }) {
     })
     setText('')
     setSending(false)
+    if(handleInteract) handleInteract(postId, 'comment')
   }
 
   return (
@@ -644,54 +923,243 @@ function ChatInput({ postId, userId, lang = 'vi' }) {
 }
 
 // ─── CreateModal ──────────────────────────────────────────────────────────────
+const PRESET_TAGS = ['agriculture', 'plants', 'research', 'iot', 'greenhouse', 'emissions']
+
 function CreateModal({ session, onClose, onCreated, lang = 'vi' }) {
-  const [title, setTitle]       = useState('')
-  const [body, setBody]         = useState('')
-  const [tagsRaw, setTagsRaw]   = useState('')
-  const [saving, setSaving]     = useState(false)
-  const [err, setErr]           = useState('')
+  const [title, setTitle]               = useState('')
+  const [body, setBody]                 = useState('')
+  const [selectedPresets, setSelectedPresets] = useState(new Set())
+  const [customTagsRaw, setCustomTagsRaw]     = useState('')
+  const [saving, setSaving]             = useState(false)
+  const [uploading, setUploading]       = useState(false)
+  const [err, setErr]                   = useState('')
+  const [tab, setTab]                   = useState('write') // 'write' | 'preview'
+  const contentRef  = useRef(null)
+  const lastCursor  = useRef(null)
+  const fileInputRef = useRef(null)
+
+  const togglePreset = (tag) => {
+    setSelectedPresets(prev => {
+      const next = new Set(prev)
+      next.has(tag) ? next.delete(tag) : next.add(tag)
+      return next
+    })
+  }
+
+  const allTags = [
+    ...selectedPresets,
+    ...customTagsRaw.split(',').map(s => s.trim()).filter(Boolean),
+  ]
+
+  // Track last cursor position so image inserts at caret
+  const saveCaretPos = () => {
+    if (contentRef.current) lastCursor.current = contentRef.current.selectionStart
+  }
+
+  const handleImageUpload = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file || !session) return
+    // Reset input so same file can be re-selected
+    e.target.value = ''
+
+    setUploading(true)
+    setErr('')
+    try {
+      const ext      = file.name.split('.').pop()
+      const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
+      const filePath = `posts/${session.user.id}/${fileName}`
+
+      const { error: upErr } = await supabase.storage
+        .from('post-images')
+        .upload(filePath, file, { upsert: false })
+
+      if (upErr) { setErr(upErr.message); setUploading(false); return }
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('post-images')
+        .getPublicUrl(filePath)
+
+      const md  = `![image](${publicUrl})`
+      const pos = lastCursor.current ?? body.length
+      const newBody = body.slice(0, pos) + md + body.slice(pos)
+      setBody(newBody)
+      // Restore cursor after inserted text on next render
+      requestAnimationFrame(() => {
+        if (contentRef.current) {
+          contentRef.current.focus()
+          contentRef.current.setSelectionRange(pos + md.length, pos + md.length)
+        }
+      })
+    } catch (e) {
+      setErr(e.message)
+    }
+    setUploading(false)
+  }
 
   const submit = async () => {
-    if (!title.trim() || !body.trim()) { setErr(t('comm_err_fields', lang)); return }
-    if (!session) { setErr(t('comm_err_login', lang)); return }
-    setSaving(true); setErr('')
-    const tags = tagsRaw.split(',').map(t => t.trim()).filter(Boolean)
-    const { error } = await supabase.from('community_posts').insert({
-      user_id: session.user.id,
-      title: title.trim(),
-      body: body.trim(),
-      tags,
-    })
-    if (error) { setErr(error.message); setSaving(false); return }
-    onCreated()
+    setErr('')
+    if (!session)              { setErr(t('comm_err_login', lang)); return }
+    if (!title.trim())         { setErr('Title is required'); return }
+    if (body.trim().length < 10)  { setErr('Content must be at least 10 characters'); return }
+
+    setSaving(true)
+    try {
+      const { data: { user }, error: userErr } = await supabase.auth.getUser()
+      if (userErr || !user) { setErr(userErr?.message || 'Not signed in'); setSaving(false); return }
+
+      const tagsArray = allTags
+
+      const { data: post, error: insertErr } = await supabase
+        .from('community_posts')
+        .insert({
+          author_id: user.id,
+          user_id:   user.id,
+          title:     title.trim(),
+          body:      body.trim(),
+          tags:      tagsArray,
+          likes:     0,
+          approved:  false,
+        })
+        .select()
+        .single()
+
+      if (insertErr) { setErr(insertErr.message); setSaving(false); return }
+      onCreated(post)
+    } catch (e) {
+      setErr(e.message || 'Network error')
+      setSaving(false)
+    }
   }
 
   return (
-    <div className="cm-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+    <div className="cm-overlay" onClick={e => e.target === e.currentTarget && !saving && onClose()}>
       <div className="cm-modal">
+        {/* Header */}
         <div className="cm-modal-hdr">
           <span className="cm-modal-title">{t('comm_modal_title', lang)}</span>
-          <button className="cm-modal-close" onClick={onClose}><IcoClose /></button>
+          <button className="cm-modal-close" onClick={onClose} disabled={saving}><IcoClose /></button>
         </div>
+
         <div className="cm-modal-body">
+          {/* Title */}
           <div>
             <div className="cm-field-lbl">{t('comm_field_title', lang)}</div>
-            <input className="cm-field-inp" placeholder={t('comm_title_ph', lang)} value={title} onChange={e => setTitle(e.target.value)} />
+            <input
+              className="cm-field-inp"
+              placeholder={t('comm_title_ph', lang)}
+              value={title}
+              onChange={e => setTitle(e.target.value)}
+              maxLength={120}
+            />
+            {title.length > 0 && !title.trim() && (
+              <div style={{ fontSize: 11, color: '#f87171', marginTop: 4 }}>
+                Title is required
+              </div>
+            )}
           </div>
+
+          {/* Content + preview tabs */}
           <div>
-            <div className="cm-field-lbl">{t('comm_field_body', lang)}</div>
-            <textarea className="cm-field-inp cm-field-ta" placeholder={t('comm_body_ph', lang)} value={body} onChange={e => setBody(e.target.value)} />
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 0 }}>
+              <div className="cm-tabs">
+                <button className={`cm-tab ${tab === 'write' ? 'active' : ''}`} onClick={() => setTab('write')}>Write</button>
+                <button className={`cm-tab ${tab === 'preview' ? 'active' : ''}`} onClick={() => setTab('preview')}>Preview</button>
+              </div>
+              <label style={{
+                cursor: uploading ? 'not-allowed' : 'pointer',
+                fontSize: 12, color: uploading ? 'var(--cm-faint)' : '#10b981',
+                display: 'flex', alignItems: 'center', gap: 4, paddingBottom: 2,
+                opacity: uploading ? 0.6 : 1,
+              }}>
+                <IcoPlus /> {uploading ? 'Uploading…' : 'Insert Image'}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  style={{ display: 'none' }}
+                  disabled={uploading}
+                  onChange={handleImageUpload}
+                />
+              </label>
+            </div>
+
+            {tab === 'write' ? (
+              <textarea
+                ref={contentRef}
+                className="cm-field-inp cm-field-ta"
+                placeholder={t('comm_body_ph', lang)}
+                value={body}
+                onChange={e => setBody(e.target.value)}
+                onBlur={saveCaretPos}
+                onClick={saveCaretPos}
+                onKeyUp={saveCaretPos}
+                style={{ borderTopLeftRadius: 0, borderTopRightRadius: 0, borderTop: 'none' }}
+              />
+            ) : (
+              <div className="cm-preview-box cm-markdown-preview">
+                {body.trim()
+                  ? <ReactMarkdown>{body}</ReactMarkdown>
+                  : <span style={{ color: 'var(--cm-placeholder)', fontSize: 13 }}>Nothing to preview yet.</span>}
+              </div>
+            )}
+            {body.length > 0 && body.trim().length < 10 && (
+              <div style={{ fontSize: 11, color: '#f87171', marginTop: 4 }}>
+                Content must be at least 10 characters ({body.trim().length}/10)
+              </div>
+            )}
           </div>
+
+          {/* Tags */}
           <div>
-            <div className="cm-field-lbl">{t('comm_field_tags', lang)} <span style={{ fontWeight: 400, textTransform: 'none', fontSize: 11 }}>({t('comm_tags_hint', lang)})</span></div>
-            <input className="cm-field-inp" placeholder={t('comm_tags_ph', lang)} value={tagsRaw} onChange={e => setTagsRaw(e.target.value)} />
+            <div className="cm-field-lbl">
+              {t('comm_field_tags', lang)}{' '}
+              <span style={{ fontWeight: 400, textTransform: 'none', fontSize: 11 }}>
+                (click to toggle, or type custom)
+              </span>
+            </div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+              {PRESET_TAGS.map(pt => (
+                <span
+                  key={pt}
+                  className={`cm-chip${selectedPresets.has(pt) ? ' active' : ''}`}
+                  onClick={() => togglePreset(pt)}
+                >
+                  {selectedPresets.has(pt) ? '✓ ' : '+ '}{pt}
+                </span>
+              ))}
+            </div>
+            <input
+              className="cm-field-inp"
+              placeholder="Custom tags, comma-separated (e.g. soil, water)"
+              value={customTagsRaw}
+              onChange={e => setCustomTagsRaw(e.target.value)}
+            />
+            {allTags.length > 0 && (
+              <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 6 }}>
+                {allTags.map(tag => (
+                  <span key={tag} className="cm-tag"><IcoTag />{tag}</span>
+                ))}
+              </div>
+            )}
           </div>
-          {err && <div className="cm-err">{err}</div>}
+
+          {err && <div className="cm-err">⚠ {err}</div>}
         </div>
+
+        {/* Footer */}
         <div className="cm-modal-ftr">
-          <button className="cm-btn-ghost" onClick={onClose}>{t('comm_cancel', lang)}</button>
-          <button className="cm-create-btn" onClick={submit} disabled={saving || !title.trim() || !body.trim()}>
-            {saving ? t('comm_submitting', lang) : <><IcoPlus /> {t('comm_submit', lang)}</>}
+          <button className="cm-btn-ghost" onClick={onClose} disabled={saving}>
+            {t('comm_cancel', lang)}
+          </button>
+          <button
+            className="cm-create-btn"
+            onClick={submit}
+            disabled={saving || uploading || !title.trim() || body.trim().length < 10}
+            style={{ minWidth: 90, justifyContent: 'center' }}
+          >
+            {saving
+              ? <IcoSpinner />
+              : <><IcoPlus /> {t('comm_submit', lang)}</>}
           </button>
         </div>
       </div>
