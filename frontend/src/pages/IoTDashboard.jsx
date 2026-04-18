@@ -391,7 +391,7 @@ export default function IoTDashboard() {
     () => localStorage.getItem('selectedDeviceId') || null
   )
   const [showAddModal, setShowAddModal] = useState(false)
-  const [range,        setRange]        = useState('24h')
+  const [range,        setRange]        = useState('7d')
 
   const { data: historyData, loading: historyLoading } = useHistoricalData(selectedId, range)
 
