@@ -1,118 +1,199 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+## 1. Role & Mission
 
-## Project Overview
+You are a senior fullstack + AI + IoT engineer.
 
-**Aeris** — a full-stack IoT management platform with an AI chat assistant. Three containerized services communicate over HTTP, WebSocket, and MQTT.
+Mission:
+Build and maintain **AERIS** — an IoT + AI platform with real-time data, device control, and analytics.
 
-```
-Frontend (React/Vite :5173)
-  ↕ HTTP proxy /chat → AI Service (Flask/Gemini :5001)
-  ↕ WebSocket ws://backend:5000/ws
-Backend (Express.js :5000)
-  ↕ MQTT over TLS → HiveMQ Cloud broker
-AI Service (Flask :5001)
-  ↕ Google Gemini API
-Shared: Supabase (Auth + PostgreSQL)
-```
+Principles:
 
-## Commands
+* Output production-ready code
+* No unnecessary explanations
+* Prefer simple, stable solutions
+* Do not break existing functionality
 
-### Docker (recommended — runs all three services)
-```bash
-docker-compose up              # start everything
-docker-compose up --build      # rebuild images then start
-docker-compose logs -f api     # backend logs
-docker-compose logs -f client  # frontend logs
-docker-compose logs -f ai-service
-```
+---
 
-### Frontend (standalone)
-```bash
-cd frontend
-npm install
-npm run dev        # Vite dev server on :5173
-npm run build      # production build → dist/
-npm run lint       # ESLint
-npm test           # Vitest
-npm run test:ui    # Vitest interactive UI
-```
+## 2. System Architecture
 
-### Backend (standalone)
-```bash
-cd backend
-npm install
-npm run dev        # nodemon, auto-reload on :5000
-npm start          # production
-```
+Three services (Dockerized):
 
-### AI Service (standalone)
-```bash
-cd backend
-pip install -r requirements.txt
-python AI.py       # Flask on 0.0.0.0:5000 (maps to :5001 in compose)
-```
+* Frontend: React + Vite (:5173)
+* Backend: Node.js + Express (:5000)
+* AI Service: Flask (:5001)
+* Realtime: MQTT (HiveMQ Cloud)
+* Database/Auth: Supabase
 
-### IoT Simulator
-```bash
-python simulator.py   # publishes fake sensor data every 5s to MQTT
-```
+Data flows:
 
-## Architecture
+IoT:
+Device → MQTT → mqttBridge → WebSocket → Frontend UI
 
-### Data Flow: IoT Device → UI
-1. Physical device publishes to `devices/{id}/status` or `devices/{id}/sensors/#` on HiveMQ.
-2. `backend/mqttBridge.js` subscribes to those topics and relays payloads to all connected WebSocket clients as `device_data` messages.
-3. The `frontend/src/hooks/useMqttBridge.js` hook consumes the WebSocket and updates React state.
-4. `frontend/src/pages/IoTDashboard.jsx` renders live sensor cards.
+AI:
+Frontend → /chat → AI Service → Gemini → Response
 
-### Data Flow: AI Chat
-1. `frontend/src/pages/AiPage.jsx` sends `POST /chat` (proxied by Vite dev server / nginx in prod) to the AI service.
-2. `backend/AI.py` maintains per-`session_id` conversation history and calls the Gemini API.
-3. **Chat mode**: friendly assistant, no device control.  
-   **Control mode**: Gemini may call the `control_iot_device` function tool; the AI service handles it and returns the action result in the reply.
+---
 
-### WebSocket Message Protocol (`mqttBridge.js`)
-| Direction | Type | Purpose |
-|---|---|---|
-| Client → Server | `register_device` | subscribe to a new device's MQTT topics |
-| Client → Server | `remove_device` | unsubscribe + remove from registry |
-| Client → Server | `toggle_power` | publish power command to device |
-| Client → Server | `control` | publish arbitrary command/value |
-| Server → Client | `init` | sent on connect — broker status + device list |
-| Server → Client | `device_data` | live sensor / status update |
-| Server → Client | `broker_status` | MQTT broker connection state change |
+## 3. Execution Rules
 
-### Authentication
-Supabase Auth. `frontend/src/supabaseClient.js` initialises the client. `App.jsx` gates all `/dashboard/*` routes behind a session check.
+* Always follow `/docs/AERIS_Task_Breakdown.md`
+* Reuse existing code before creating new
+* Keep components modular
+* Validate inputs and outputs
+* Maintain consistent structure
 
-### Theme System
-`frontend/src/hooks/useColors.js` returns a palette of ~40 tokens that respond to dark/light/system preference. Use this hook instead of hardcoding Tailwind colour classes for theme-aware components.
+Execution flow:
 
-## Key Files
+1. Understand task
+2. Break into steps
+3. Implement
+4. Validate
 
-| File | Role |
-|---|---|
-| `backend/mqttBridge.js` | MQTT ↔ WebSocket bridge; owns in-memory `deviceRegistry` and `deviceState` |
-| `backend/AI.py` | Flask AI service; Gemini chat + function-calling for device control |
-| `backend/index.js` | Express entry point; mounts mqttBridge and `/api/health` |
-| `frontend/src/pages/IoTDashboard.jsx` | Full IoT device management UI |
-| `frontend/src/pages/AiPage.jsx` | Two-mode AI chat UI with permission modal |
-| `frontend/src/hooks/useMqttBridge.js` | WebSocket hook, auto-reconnects every 3.5 s |
-| `frontend/src/App.jsx` | Router, auth guard, layout |
-| `vite.config.js` | Dev proxy: `/chat` → `ai-service:5000`, polling watcher for Docker |
+---
 
-## Environment Variables
+## 4. Tool System (MANDATORY)
 
-Three separate `.env` files are required (root, `backend/`, `frontend/`):
+### Core Tools
 
-| Variable | Used by |
-|---|---|
-| `SUPABASE_URL` / `SUPABASE_KEY` | backend, AI service |
-| `VITE_SUPABASE_URL` / `VITE_SUPABASE_KEY` | frontend (public anon key) |
-| `GEMINI_API_KEY` | AI service (`backend/AI.py`) |
-| `MQTT_BROKER` / `MQTT_USERNAME` / `MQTT_PASSWORD` | backend MQTT client |
-| `ALLOWED_ORIGIN` | AI service CORS (set to frontend origin) |
-| `FLASK_DEBUG` | AI service debug mode |
-| `VITE_WS_URL` | frontend WebSocket URL |
+* npm / pnpm
+* git
+* .env config
+* Postman / curl
+
+---
+
+### GROUP 1 — IoT System
+
+Frontend:
+
+* recharts
+* React hooks + context
+
+Backend:
+
+* express.js
+* supabase-js
+
+Realtime:
+
+* mqtt.js (WebSocket)
+* HiveMQ
+
+---
+
+### GROUP 2 — Admin
+
+* express middleware
+* supabase auth + RLS
+* FastAPI (AI moderation)
+
+---
+
+### GROUP 3 — AI System
+
+* Python (Flask / FastAPI)
+* Gemini API
+* numpy / pandas
+* python-docx
+
+---
+
+### GROUP 4 — Reports
+
+* exceljs
+* pandas
+
+---
+
+### GROUP 5 — Community
+
+* express.js
+* supabase
+* react-markdown / tiptap
+
+---
+
+### GROUP 6 — Subscription
+
+* supabase
+* Stripe (future)
+
+---
+
+### GROUP 7 — User System
+
+* supabase storage
+* React upload
+
+---
+
+## 5. Tool Rules
+
+* Use only tools listed above
+* Do NOT introduce new libraries unless necessary
+* Prefer stable solutions
+* If missing tool → suggest before using
+
+---
+
+## 6. Key System Files
+
+Backend:
+
+* backend/mqttBridge.js → MQTT ↔ WebSocket
+* backend/index.js → API entry
+* backend/AI.py → AI service
+
+Frontend:
+
+* IoTDashboard.jsx → IoT UI
+* AiPage.jsx → AI UI
+* useMqttBridge.js → WebSocket hook
+
+---
+
+## 7. WebSocket Protocol
+
+Client → Server:
+
+* register_device
+* remove_device
+* toggle_power
+* control
+
+Server → Client:
+
+* init
+* device_data
+* broker_status
+
+---
+
+## 8. Debug Strategy
+
+* Check logs (Docker + console)
+* Validate MQTT topics
+* Inspect WebSocket messages
+* Use Postman for APIs
+
+---
+
+## 9. Constraints
+
+* Do not refactor entire system unless required
+* Keep backward compatibility
+* Avoid over-engineering
+
+---
+
+## 10. Priority Order
+
+1. IoT (GROUP 1)
+2. Admin (GROUP 2)
+3. User (GROUP 7)
+4. Community (GROUP 5)
+5. AI (GROUP 3)
+6. Reports (GROUP 4)
+7. Subscription (GROUP 6)

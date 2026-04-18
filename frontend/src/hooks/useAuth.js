@@ -3,7 +3,7 @@ import { supabase } from '../supabaseClient'
 
 /**
  * useAuth — returns { session, user, profile, isAdmin, loading }
- * Fetches the user's profile row (with role) from the `profiles` table.
+ * Checks role from profiles table AND user_metadata for admin status.
  */
 export function useAuth() {
   const [session, setSession]   = useState(null)
@@ -39,18 +39,28 @@ export function useAuth() {
     setLoading(true)
     const { data } = await supabase
       .from('profiles')
-      .select('role, full_name, email')
+      .select('role, full_name, email, bio, avatar_url')
       .eq('id', userId)
       .single()
     setProfile(data ?? null)
     setLoading(false)
   }
 
+  // Admin check: profiles table role OR user_metadata.role
+  const isAdmin = profile?.role === 'admin'
+    || session?.user?.user_metadata?.role === 'admin'
+
+  const refreshProfile = () => {
+    const userId = session?.user?.id
+    if (userId) fetchProfile(userId)
+  }
+
   return {
     session,
     user: session?.user ?? null,
     profile,
-    isAdmin: profile?.role === 'admin',
+    isAdmin,
     loading,
+    refreshProfile,
   }
 }

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
 import { useLang } from '../contexts/LangContext'
 import { t } from '../i18n'
@@ -87,6 +88,43 @@ export default function Dashboard() {
   const C = useColors()
   const { profile, user } = useAuth()
 
+  const navigate = useNavigate()
+  const [myGroup, setMyGroup] = useState(null)
+  const [groupLoading, setGroupLoading] = useState(true)
+  const [userCount, setUserCount] = useState(null)
+
+  useEffect(() => {
+    const fetchMyGroup = async () => {
+      if (!user?.id) return
+      const { data: membership } = await supabase
+        .from('group_members')
+        .select('group_id, role, groups(id, name, description)')
+        .eq('user_id', user.id)
+        .limit(1)
+        .single()
+
+      if (membership?.groups) {
+        const { count } = await supabase
+          .from('group_members')
+          .select('*', { count: 'exact', head: true })
+          .eq('group_id', membership.group_id)
+        setMyGroup({ ...membership.groups, memberCount: count || 0, role: membership.role })
+      }
+      setGroupLoading(false)
+    }
+    fetchMyGroup()
+  }, [user?.id])
+
+  useEffect(() => {
+    const fetchUserCount = async () => {
+      const { count } = await supabase
+        .from('profiles')
+        .select('*', { count: 'exact', head: true })
+      setUserCount(count)
+    }
+    fetchUserCount()
+  }, [])
+
   const userName = profile?.full_name
     || user?.email?.split('@')[0]
     || (lang === 'vi' ? 'Người dùng' : 'User')
@@ -94,7 +132,7 @@ export default function Dashboard() {
   const stats = [
     {
       icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>,
-      label: t('dash_users', lang), value: '15/20', sub: t('dash_vs_prev', lang), trend: 12.5,
+      label: t('dash_users', lang), value: userCount !== null ? `${userCount} users` : '...', sub: t('dash_vs_prev', lang), trend: 12.5,
       sparkData: [30, 45, 38, 52, 48, 60, 55, 70, 65, 80, 75, 90],
     },
     {
@@ -148,12 +186,16 @@ export default function Dashboard() {
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {quickActions.map(({ label, icon }) => (
-              <button key={label} style={{
-                display: 'flex', alignItems: 'center', gap: 6,
-                padding: '8px 14px', borderRadius: 8,
-                background: C.accentBgStrong, border: `1px solid ${C.accentBorderStrong}`,
-                color: C.subheading, fontSize: 13, cursor: 'pointer', transition: 'all 0.2s', fontFamily: 'inherit',
-              }}
+              <button key={label}
+                onClick={() => {
+                  if (label === t('dash_qa_invite', lang)) navigate('/dashboard/groups')
+                }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  padding: '8px 14px', borderRadius: 8,
+                  background: C.accentBgStrong, border: `1px solid ${C.accentBorderStrong}`,
+                  color: C.subheading, fontSize: 13, cursor: 'pointer', transition: 'all 0.2s', fontFamily: 'inherit',
+                }}
                 onMouseEnter={e => { e.currentTarget.style.background = C.accentBg; e.currentTarget.style.color = C.accent }}
                 onMouseLeave={e => { e.currentTarget.style.background = C.accentBgStrong; e.currentTarget.style.color = C.subheading }}
               >{icon}{label}</button>
@@ -164,11 +206,21 @@ export default function Dashboard() {
 
       {/* Stat cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16, marginBottom: 24 }}>
-        {stats.map((s, i) => <StatCard key={s.label} {...s} delay={i * 80} C={C} />)}
+        {stats.map((s, i) => {
+          const card = <StatCard key={s.label} {...s} delay={i * 80} C={C} />
+          if (s.label === t('dash_users', lang)) {
+            return (
+              <div key={s.label} onClick={() => navigate('/dashboard/groups')} style={{ cursor: 'pointer' }} title={lang === 'vi' ? 'Xem nhóm của bạn' : 'View your group'}>
+                {card}
+              </div>
+            )
+          }
+          return card
+        })}
       </div>
 
       {/* Bottom row */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px 280px', gap: 16 }}>
 
         {/* Activity feed */}
         <div style={{ background: C.cardBg, border: `1px solid ${C.cardBorder}`, borderRadius: 16, padding: 24 }}>
@@ -177,6 +229,72 @@ export default function Dashboard() {
             <button style={{ fontSize: 12, color: C.accent, background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontFamily: 'inherit' }}>{t('dash_view_all', lang)}</button>
           </div>
           {activities.map((a, i) => <ActivityItem key={i} {...a} C={C} />)}
+        </div>
+
+        {/* My Group */}
+        <div
+          onClick={() => navigate('/dashboard/groups')}
+          style={{
+            background: C.cardBg, border: `1px solid ${C.cardBorder}`,
+            borderRadius: 16, padding: 24, cursor: 'pointer',
+            transition: 'border-color 0.2s, background 0.2s',
+          }}
+          onMouseEnter={e => { e.currentTarget.style.borderColor = C.cardBorderHover; e.currentTarget.style.background = C.cardBgHover }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor = C.cardBorder; e.currentTarget.style.background = C.cardBg }}
+        >
+          <h2 style={{ fontSize: 16, fontWeight: 600, color: C.body, margin: '0 0 16px' }}>
+            {lang === 'vi' ? '👥 Nhóm của tôi' : '👥 My Group'}
+          </h2>
+
+          {groupLoading ? (
+            <div style={{ color: C.muted, fontSize: 13 }}>
+              {lang === 'vi' ? 'Đang tải...' : 'Loading...'}
+            </div>
+          ) : myGroup ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ fontSize: 22, fontWeight: 700, color: C.heading }}>{myGroup.name}</div>
+              <div style={{ fontSize: 13, color: C.subheading, lineHeight: 1.5 }}>
+                {myGroup.description || ''}
+              </div>
+              <div style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                background: C.accentBg, border: `1px solid ${C.accentBorder}`,
+                borderRadius: 100, padding: '4px 12px', width: 'fit-content',
+              }}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={C.accent} strokeWidth="2">
+                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                  <circle cx="9" cy="7" r="4"/>
+                  <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                  <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                </svg>
+                <span style={{ fontSize: 13, color: C.accent, fontWeight: 600 }}>
+                  {myGroup.memberCount} {lang === 'vi' ? 'thành viên' : 'members'}
+                </span>
+              </div>
+              <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>
+                {lang === 'vi' ? `Vai trò: ${myGroup.role}` : `Role: ${myGroup.role}`}
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.6 }}>
+                {lang === 'vi'
+                  ? 'Bạn chưa thuộc nhóm nào. Tạo hoặc tham gia nhóm ngay!'
+                  : "You're not in any group yet. Create or join one!"}
+              </div>
+              <button
+                onClick={e => { e.stopPropagation(); navigate('/dashboard/groups') }}
+                style={{
+                  background: 'linear-gradient(135deg,#065f46,#10b981)',
+                  color: '#fff', border: 'none', borderRadius: 8,
+                  padding: '8px 16px', fontSize: 13, cursor: 'pointer',
+                  fontWeight: 600, fontFamily: 'inherit', width: 'fit-content',
+                }}
+              >
+                {lang === 'vi' ? '+ Tạo nhóm' : '+ Create Group'}
+              </button>
+            </div>
+          )}
         </div>
 
         {/* System health */}

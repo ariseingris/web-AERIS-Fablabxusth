@@ -24,4 +24,12 @@ export default {
   ai_modal_warn:       { en: '⚠️ Only confirm if you actually want to control devices. You can revoke permission at any time.', vi: '⚠️ Chỉ xác nhận nếu bạn thực sự muốn điều khiển thiết bị. Bạn có thể thu hồi quyền bất cứ lúc nào.' },
   ai_modal_cancel:     { en: 'Cancel',                                             vi: 'Huỷ bỏ' },
   ai_modal_confirm:    { en: '✓ Allow Control',                                    vi: '✓ Cho phép điều khiển' },
+  ai_page_title:       { en: 'AERIS AI (Gemma 4 E4B)',                             vi: 'AERIS AI (Gemma 4 E4B)' },
+  ai_qa_research:      { en: 'Research Plants',                                    vi: 'Nghiên cứu Cây trồng' },
+  ai_qa_predict:       { en: 'Analyze IoT Data',                                   vi: 'Phân tích dữ liệu IoT' },
+  ai_qa_report:        { en: 'Generate Report',                                    vi: 'Tạo Báo cáo' },
+  ai_qa_schedule:      { en: 'Group Schedule',                                     vi: 'Lịch hoạt động nhóm' },
+  ai_qa_announce:      { en: 'Announcement',                                       vi: 'Đăng Thông báo' },
+  ai_format_title:     { en: 'Select Report Format',                               vi: 'Chọn định dạng Báo cáo' },
+  ai_format_next:      { en: 'Next',                                               vi: 'Tiếp tục' },
 }

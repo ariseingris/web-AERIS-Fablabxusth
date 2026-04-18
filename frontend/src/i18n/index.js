@@ -13,6 +13,7 @@ import login      from './login'
 import landing    from './landing'
 import community  from './community'
 import admin      from './admin'
+import groups     from './groups'
 
 export const translations = {
     ...sidebar,
@@ -26,6 +27,7 @@ export const translations = {
     ...landing,
     ...community,
     ...admin,
+    ...groups,
 }
 
 /**

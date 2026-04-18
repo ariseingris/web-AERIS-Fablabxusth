@@ -3,6 +3,7 @@ import { NavLink } from 'react-router-dom'
 import { useTheme } from '../contexts/ThemeContext'
 import { useLang } from '../contexts/LangContext'
 import { useAuth } from '../hooks/useAuth'
+import { useSubscription } from '../contexts/SubscriptionContext'
 import { t } from '../i18n'
 
 // ---------------------------------------------------------------------------
@@ -83,6 +84,21 @@ const IconShield = () => (
     <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
   </svg>
 )
+const IconGroups = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+    fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M18 21v-2a4 4 0 0 0-4-4H10a4 4 0 0 0-4 4v2"/>
+    <circle cx="12" cy="7" r="4"/>
+  </svg>
+)
+const IconProducts = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+    fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/>
+    <line x1="3" y1="6" x2="21" y2="6"/>
+    <path d="M16 10a4 4 0 0 1-8 0"/>
+  </svg>
+)
 
 // ---------------------------------------------------------------------------
 // Context
@@ -132,6 +148,7 @@ export default function Sidebar({ session, handleLogout }) {
   const { theme } = useTheme()
   const { lang } = useLang()
   const { isAdmin } = useAuth()
+  const { isPro, showUpsell } = useSubscription()
 
   const [systemDark, setSystemDark] = useState(
     () => typeof window !== 'undefined' && window.matchMedia
@@ -192,8 +209,31 @@ export default function Sidebar({ session, handleLogout }) {
           <SidebarItem icon={<IconBot />}       text={t('nav_ai', lang)}         to="/dashboard/ai" />
           <SidebarItem icon={<IconIoT />}       text={t('nav_iot', lang)}        to="/dashboard/iot" />
           <SidebarItem icon={<IconCommunity />} text={t('nav_community', lang)}  to="/dashboard/community" />
+          <SidebarItem icon={<IconGroups />}    text={t('nav_groups', lang)}     to="/dashboard/groups" />
+          <SidebarItem icon={<IconProducts />}  text="Products"                   to="/dashboard/products" />
           {isAdmin && (
             <SidebarItem icon={<IconShield />} text={t('nav_admin', lang)} to="/dashboard/admin" />
+          )}
+          {!isPro && (
+            <div style={{ padding: '8px', marginTop: 'auto', marginBottom: '8px' }}>
+              <button 
+                onClick={() => showUpsell('generic')} 
+                title="Upgrade to Pro"
+                style={{
+                  width: '100%', padding: '10px', borderRadius: 8,
+                  background: 'linear-gradient(135deg, rgba(245,158,11,0.1), rgba(217,119,6,0.1))', 
+                  border: '1px solid rgba(245, 158, 11, 0.3)',
+                  color: '#f59e0b', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  transition: 'all 0.2s',
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(245, 158, 11, 0.2)' }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'linear-gradient(135deg, rgba(245,158,11,0.1), rgba(217,119,6,0.1))' }}
+              >
+                <span>✨</span>
+                {expanded && <span>Upgrade to Pro</span>}
+              </button>
+            </div>
           )}
           <li style={{ margin: '6px 0', borderTop: `1px solid ${C.divider}` }} />
           <SidebarItem icon={<IconRefresh />}   text={t('nav_update', lang)}     to="/dashboard/update" />
@@ -215,7 +255,16 @@ export default function Sidebar({ session, handleLogout }) {
         {expanded && (
           <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 4, overflow: 'hidden' }}>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: C.userNameColor, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{userName}</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: C.userNameColor, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 6 }}>
+                {userName}
+                {isPro && (
+                  <span style={{
+                    background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+                    color: '#fff', fontSize: 9, fontWeight: 800, padding: '2px 5px',
+                    borderRadius: 4, letterSpacing: '0.05em'
+                  }}>PRO</span>
+                )}
+              </div>
               <div style={{ fontSize: 11, color: C.userEmailColor, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{userEmail}</div>
             </div>
             <button onClick={handleLogout} title={t('nav_logout', lang)} style={{

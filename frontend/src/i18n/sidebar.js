@@ -8,4 +8,5 @@ export default {
     nav_settings:   { en: 'Settings',    vi: 'Cài đặt' },
     nav_help:       { en: 'Help',        vi: 'Trợ giúp' },
     nav_logout:     { en: 'Log out',     vi: 'Đăng xuất' },
+    nav_groups:     { en: 'Groups',      vi: 'Nhóm' },
 }

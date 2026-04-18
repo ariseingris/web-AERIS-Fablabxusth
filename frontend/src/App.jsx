@@ -6,7 +6,9 @@ import {
   Navigate,
   Outlet,
 } from 'react-router-dom'
+import { Toaster } from 'react-hot-toast'
 import { supabase } from './supabaseClient'
+import ErrorBoundary from './components/ErrorBoundary'
 
 // ── Page imports ─────────────────────────────────────────────
 import Landing from './pages/Landing'
@@ -19,10 +21,14 @@ import HelpPage from './pages/HelpPage'
 import CommunityPage from './pages/CommunityPage'   // ← NEW
 import AdminPage from './pages/AdminPage'
 import AdminRoute from './components/AdminRoute'
+import { SubscriptionProvider } from './contexts/SubscriptionContext'
+import UpsellModal from './components/UpsellModal'
 import { useLang } from './contexts/LangContext'
 import { t } from './i18n'
 import Sidebar from './components/Sidebar'
 import IoTDashboard from './pages/IoTDashboard'
+import GroupPage from './pages/GroupPage'
+import ProductsPage from './pages/ProductsPage'
 
 // ============================================================
 // MAIN LAYOUT  — sidebar + content side by side (inline styles)
@@ -107,7 +113,24 @@ export default function App() {
   }
 
   return (
-    <Router>
+    <SubscriptionProvider>
+      <UpsellModal />
+      <Toaster
+        position="bottom-right"
+        toastOptions={{
+          style: {
+            background: '#1a2e1e',
+            color: '#e2f5e8',
+            border: '1px solid #2d4a35',
+            borderRadius: '10px',
+            fontSize: '13px',
+            fontFamily: "'Inter', system-ui, sans-serif",
+          },
+          success: { iconTheme: { primary: '#10b981', secondary: '#052e16' } },
+          error:   { iconTheme: { primary: '#ef4444', secondary: '#fff' } },
+        }}
+      />
+      <Router>
       <Routes>
 
         {/* ── PUBLIC ── */}
@@ -126,16 +149,19 @@ export default function App() {
             </ProtectedRoute>
           }
         >
-          <Route index                element={<Dashboard />} />
-          <Route path="ai"            element={<AiPage />} />
-          <Route path="update"        element={<UpdatePage />} />
-          <Route path="settings"      element={<SettingsPage />} />
-          <Route path="help"          element={<HelpPage />} />
-          <Route path="iot"           element={<IoTDashboard />} />
-          <Route path="community"     element={<CommunityPage />} />  {/* ← NEW */}
+          <Route index                element={<ErrorBoundary><Dashboard /></ErrorBoundary>} />
+          <Route path="ai"            element={<ErrorBoundary><AiPage /></ErrorBoundary>} />
+          <Route path="update"        element={<ErrorBoundary><UpdatePage /></ErrorBoundary>} />
+          <Route path="settings"      element={<ErrorBoundary><SettingsPage /></ErrorBoundary>} />
+          <Route path="help"          element={<ErrorBoundary><HelpPage /></ErrorBoundary>} />
+          <Route path="iot"           element={<ErrorBoundary><IoTDashboard /></ErrorBoundary>} />
+          <Route path="community"     element={<ErrorBoundary><CommunityPage /></ErrorBoundary>} />
+          <Route path="groups"        element={<ErrorBoundary><GroupPage /></ErrorBoundary>} />
+          <Route path="groups/:id"    element={<ErrorBoundary><GroupPage /></ErrorBoundary>} />
+          <Route path="products"      element={<ErrorBoundary><ProductsPage /></ErrorBoundary>} />
           <Route path="admin"         element={
             <AdminRoute>
-              <AdminPage />
+              <ErrorBoundary><AdminPage /></ErrorBoundary>
             </AdminRoute>
           } />
         </Route>
@@ -145,5 +171,6 @@ export default function App() {
 
       </Routes>
     </Router>
+    </SubscriptionProvider>
   )
 }

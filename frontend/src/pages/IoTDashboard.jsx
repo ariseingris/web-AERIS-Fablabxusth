@@ -1,20 +1,27 @@
 // frontend/src/pages/IoTDashboard.jsx
-// Matches your existing Dashboard.jsx style exactly:
-//   - useColors() for all colors
-//   - useLang() + t() for i18n
-//   - Inter + DM Mono fonts
-//   - Same card / border / animation patterns
+// Full IoT dashboard with:
+//   - Device list sidebar
+//   - MultiChart (recharts) for sensor history
+//   - SensorStatCards for live readings
+//   - Connection status badges (WS + MQTT)
+//   - Device control panel (power, custom commands)
+//   - Real-time MQTT updates via useMqttBridge hook
 
 import { useState, useCallback } from 'react'
 import { useLang } from '../contexts/LangContext'
 import { useColors } from '../hooks/useColors'
 import { useMqttBridge } from '../hooks/useMqttBridge'
+import useHistoricalData from '../hooks/useHistoricalData'
+import MultiChart from '../components/MultiChart'
+import SensorStatCards from '../components/SensorStatCards'
+import ReportExporter from '../components/ReportExporter'
+import StatusBadge from '../components/StatusBadge'
 
 // ─── Sensor emoji map ─────────────────────────────────────────────────────────
 const SENSOR_ICONS = {
   temperature: '🌡️', humidity: '💧', pressure: '🔵',
   light: '☀️', motion: '👁️', co2: '🌿',
-  voltage: '⚡', current: '🔌', default: '📊',
+  voltage: '⚡', current: '🔌', ch4: '💨', default: '📊',
 }
 
 // ─── Labels (vi / en) ────────────────────────────────────────────────────────
@@ -39,6 +46,12 @@ const L = {
   value:         { vi: 'giá trị',              en: 'value' },
   send:          { vi: 'Gửi',                  en: 'Send' },
   remove:        { vi: 'Xoá',                  en: 'Remove' },
+  connected:     { vi: 'Đã kết nối',           en: 'Connected' },
+  disconnected:  { vi: 'Ngắt kết nối',         en: 'Disconnected' },
+  reconnecting:  { vi: 'Đang kết nối lại',     en: 'Reconnecting' },
+  dataPoints:    { vi: 'điểm dữ liệu',        en: 'data points' },
+  liveData:      { vi: 'Dữ liệu trực tiếp',   en: 'Live Data' },
+  controls:      { vi: 'Điều khiển',           en: 'Controls' },
   // Add modal
   addTitle:      { vi: 'Thêm thiết bị IoT',   en: 'Add IoT Device' },
   deviceId:      { vi: 'Device ID',            en: 'Device ID' },
@@ -179,42 +192,6 @@ function AddDeviceModal({ onAdd, onClose, lang, C }) {
   )
 }
 
-// ─── Sensor Card — matches StatCard visual feel ───────────────────────────────
-function SensorCard({ sensorKey, data, C }) {
-  const icon = SENSOR_ICONS[sensorKey] || SENSOR_ICONS.default
-  const val  = data?.value ?? '—'
-  const unit = data?.unit  ?? ''
-  const ts   = data?.timestamp ? new Date(data.timestamp).toLocaleTimeString() : null
-
-  return (
-    <div style={{
-      background: C.cardBg, border: `1px solid ${C.cardBorder}`,
-      borderRadius: 12, padding: '14px 16px',
-      display: 'flex', alignItems: 'flex-start', gap: 12,
-      transition: 'border-color 0.2s, background 0.2s',
-    }}
-      onMouseEnter={e => { e.currentTarget.style.borderColor = C.cardBorderHover; e.currentTarget.style.background = C.cardBgHover }}
-      onMouseLeave={e => { e.currentTarget.style.borderColor = C.cardBorder;      e.currentTarget.style.background = C.cardBg }}
-    >
-      <div style={{
-        width: 36, height: 36, borderRadius: 8, flexShrink: 0,
-        background: C.accentBg, border: `1px solid ${C.accentBorder}`,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: 18,
-      }}>{icon}</div>
-      <div style={{ flex: 1 }}>
-        <div style={{ fontSize: 11, color: C.faint, textTransform: 'capitalize', letterSpacing: 0.4 }}>
-          {sensorKey}
-        </div>
-        <div style={{ fontSize: 22, fontWeight: 600, color: C.accent, lineHeight: 1.2, marginTop: 2 }}>
-          {val}<span style={{ fontSize: 13, color: C.subheading, marginLeft: 2 }}>{unit}</span>
-        </div>
-        {ts && <div style={{ fontSize: 10, color: C.faint, marginTop: 3, fontFamily: "'DM Mono', monospace" }}>{ts}</div>}
-      </div>
-    </div>
-  )
-}
-
 // ─── Power Toggle — custom pill ───────────────────────────────────────────────
 function PowerToggle({ on, onToggle, lang, C }) {
   return (
@@ -254,44 +231,69 @@ function PowerToggle({ on, onToggle, lang, C }) {
   )
 }
 
-// ─── Device Panel ─────────────────────────────────────────────────────────────
-function DevicePanel({ device, onTogglePower, onSendCommand, onRemove, lang, C }) {
+// ─── Sensor Card (for per-device raw sensor view) ─────────────────────────────
+function SensorCard({ sensorKey, data, C }) {
+  const icon = SENSOR_ICONS[sensorKey] || SENSOR_ICONS.default
+  const val  = data?.value ?? '—'
+  const unit = data?.unit  ?? ''
+  const ts   = data?.timestamp ? new Date(data.timestamp).toLocaleTimeString() : null
+
+  return (
+    <div style={{
+      background: C.cardBg, border: `1px solid ${C.cardBorder}`,
+      borderRadius: 12, padding: '14px 16px',
+      display: 'flex', alignItems: 'flex-start', gap: 12,
+      transition: 'border-color 0.2s, background 0.2s',
+    }}
+      onMouseEnter={e => { e.currentTarget.style.borderColor = C.cardBorderHover; e.currentTarget.style.background = C.cardBgHover }}
+      onMouseLeave={e => { e.currentTarget.style.borderColor = C.cardBorder;      e.currentTarget.style.background = C.cardBg }}
+    >
+      <div style={{
+        width: 36, height: 36, borderRadius: 8, flexShrink: 0,
+        background: C.accentBg, border: `1px solid ${C.accentBorder}`,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 18,
+      }}>{icon}</div>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontSize: 11, color: C.faint, textTransform: 'capitalize', letterSpacing: 0.4 }}>
+          {sensorKey}
+        </div>
+        <div style={{ fontSize: 22, fontWeight: 600, color: C.accent, lineHeight: 1.2, marginTop: 2 }}>
+          {val}<span style={{ fontSize: 13, color: C.subheading, marginLeft: 2 }}>{unit}</span>
+        </div>
+        {ts && <div style={{ fontSize: 10, color: C.faint, marginTop: 3, fontFamily: "'DM Mono', monospace" }}>{ts}</div>}
+      </div>
+    </div>
+  )
+}
+
+// ─── Device Control Panel ─────────────────────────────────────────────────────
+function DeviceControlPanel({ device, onTogglePower, onSendCommand, onRemove, lang, C }) {
   const [showCmd,  setShowCmd]  = useState(false)
   const [cmd,      setCmd]      = useState('')
   const [cmdVal,   setCmdVal]   = useState('')
 
   const isPowered = device.state?.power === true || device.state?.power === 'on' || device.state?.power === 1
   const isOnline  = device.state?.online !== false
-  const sensors   = device.state?.sensors || {}
-  const hasSensors = Object.keys(sensors).length > 0
 
   return (
     <div style={{
-      background: C.cardBg, border: `1px solid ${isPowered ? C.accent : C.cardBorder}`,
-      borderRadius: 16, padding: 24,
-      display: 'flex', flexDirection: 'column', gap: 20,
-      transition: 'border-color 0.3s',
+      background: C.cardBg, border: `1px solid ${C.cardBorder}`,
+      borderRadius: 16, padding: 20,
+      display: 'flex', flexDirection: 'column', gap: 16,
     }}>
-
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-          <div style={{
-            width: 48, height: 48, borderRadius: 12, fontSize: 26,
-            background: C.accentBg, border: `1px solid ${C.accentBorder}`,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>{device.icon || '📡'}</div>
-          <div>
-            <div style={{ fontSize: 20, fontWeight: 700, color: C.heading, lineHeight: 1 }}>
-              {device.name}
-            </div>
-            <div style={{ fontSize: 11, color: C.faint, marginTop: 4, fontFamily: "'DM Mono', monospace" }}>
-              ID: {device.id}
-            </div>
-          </div>
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      {/* Section heading */}
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+      }}>
+        <h3 style={{
+          margin: 0, fontSize: 16, fontWeight: 600, color: C.heading,
+          display: 'flex', alignItems: 'center', gap: 8,
+        }}>
+          <span style={{ fontSize: 18 }}>🎛️</span>
+          {lv('controls', lang)}
+        </h3>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {/* Online badge */}
           <span style={{
             display: 'flex', alignItems: 'center', gap: 5,
@@ -301,7 +303,11 @@ function DevicePanel({ device, onTogglePower, onSendCommand, onRemove, lang, C }
             border: `1px solid ${isOnline ? C.accentBorder : C.cardBorder}`,
             borderRadius: 100, padding: '3px 9px',
           }}>
-            <span style={{ width: 6, height: 6, borderRadius: '50%', background: isOnline ? C.accent : C.faint, display: 'inline-block' }} />
+            <span style={{
+              width: 6, height: 6, borderRadius: '50%',
+              background: isOnline ? C.accent : C.faint, display: 'inline-block',
+              boxShadow: isOnline ? `0 0 6px ${C.accent}` : 'none',
+            }} />
             {isOnline ? lv('online', lang) : lv('offline', lang)}
           </span>
           {/* Remove */}
@@ -319,28 +325,6 @@ function DevicePanel({ device, onTogglePower, onSendCommand, onRemove, lang, C }
 
       {/* Power */}
       <PowerToggle on={isPowered} onToggle={p => onTogglePower(device.id, p)} lang={lang} C={C} />
-
-      {/* Sensors */}
-      {hasSensors ? (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12 }}>
-          {Object.entries(sensors).map(([key, data]) => (
-            <SensorCard key={key} sensorKey={key} data={data} C={C} />
-          ))}
-        </div>
-      ) : (
-        <div style={{
-          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
-          padding: 28, borderRadius: 12,
-          background: C.accentBg, border: `1px dashed ${C.accentBorder}`,
-          color: C.faint, fontSize: 13, textAlign: 'center',
-        }}>
-          <span style={{ fontSize: 32 }}>📭</span>
-          <span>{lv('waiting', lang)}</span>
-          <code style={{ fontSize: 11, color: C.accent, fontFamily: "'DM Mono', monospace" }}>
-            devices/{device.id}/sensors/temperature
-          </code>
-        </div>
-      )}
 
       {/* Custom command */}
       <div>
@@ -397,33 +381,52 @@ function DevicePanel({ device, onTogglePower, onSendCommand, onRemove, lang, C }
 export default function IoTDashboard() {
   const { lang } = useLang()
   const C = useColors()
-  const { brokerStatus, wsStatus, devices, registerDevice, removeDevice, togglePower, sendCommand } = useMqttBridge()
+  const {
+    brokerStatus, wsStatus, devices,
+    sensorHistory, latestSensor, previousSensor,
+    registerDevice, removeDevice, togglePower, sendCommand,
+  } = useMqttBridge()
 
-  const [selectedId,   setSelectedId]   = useState(null)
+  const [selectedId,   setSelectedId]   = useState(
+    () => localStorage.getItem('selectedDeviceId') || null
+  )
   const [showAddModal, setShowAddModal] = useState(false)
+  const [range,        setRange]        = useState('24h')
+
+  const { data: historyData, loading: historyLoading } = useHistoricalData(selectedId, range)
 
   const handleAdd = useCallback((deviceId, name, icon) => {
     registerDevice(deviceId, name, icon)
     setSelectedId(deviceId)
+    localStorage.setItem('selectedDeviceId', deviceId)
   }, [registerDevice])
 
   const handleRemove = useCallback((deviceId) => {
     removeDevice(deviceId)
-    if (selectedId === deviceId) setSelectedId(null)
+    if (selectedId === deviceId) {
+      setSelectedId(null)
+      localStorage.removeItem('selectedDeviceId')
+    }
   }, [removeDevice, selectedId])
 
   const selected = devices.find(d => d.id === selectedId)
 
-  const wsColor     = wsStatus === 'open'           ? C.accent : C.faint
-  const brokerColor = brokerStatus === 'connected'  ? C.accent
-                    : brokerStatus === 'error'       ? '#f87171'
-                    : '#f59e0b'
+  // Get sensor data for the selected device
+  const selectedHistory   = selectedId ? (sensorHistory[selectedId] || [])  : []
+  const selectedLatest    = selectedId ? (latestSensor[selectedId] || {})   : {}
+  const selectedPrevious  = selectedId ? (previousSensor[selectedId] || {}) : {}
 
   return (
     <div style={{ fontFamily: "'Inter', system-ui, sans-serif", color: C.body, minHeight: '100vh' }}>
-      <style>{`*{box-sizing:border-box}`}</style>
+      <style>{`
+        *{box-sizing:border-box}
+        @keyframes pulse-dot {
+          0%,100% { opacity: 1; }
+          50% { opacity: 0.4; }
+        }
+      `}</style>
 
-      {/* ── Page header (same pattern as Dashboard) ── */}
+      {/* ── Page header ── */}
       <div style={{ marginBottom: 32 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 16 }}>
           <div>
@@ -442,26 +445,26 @@ export default function IoTDashboard() {
 
           {/* Status badges + Add button */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            {/* WS status */}
-            <span style={{
-              display: 'flex', alignItems: 'center', gap: 5,
-              fontSize: 11, fontFamily: "'DM Mono', monospace", color: C.faint,
-              background: C.accentBg, border: `1px solid ${wsColor}`,
-              borderRadius: 100, padding: '4px 10px',
-            }}>
-              <span style={{ width: 6, height: 6, borderRadius: '50%', background: wsColor, display: 'inline-block' }} />
-              {lv('ws', lang)}: {wsStatus}
-            </span>
-            {/* MQTT broker status */}
-            <span style={{
-              display: 'flex', alignItems: 'center', gap: 5,
-              fontSize: 11, fontFamily: "'DM Mono', monospace", color: C.faint,
-              background: C.accentBg, border: `1px solid ${brokerColor}`,
-              borderRadius: 100, padding: '4px 10px',
-            }}>
-              <span style={{ width: 6, height: 6, borderRadius: '50%', background: brokerColor, display: 'inline-block' }} />
-              MQTT: {brokerStatus}
-            </span>
+            <StatusBadge
+              status={wsStatus}
+              label={`WS · ${wsStatus === 'open' ? lv('connected', lang) : wsStatus === 'connecting' ? lv('reconnecting', lang) : lv('disconnected', lang)}`}
+              C={C}
+            />
+            <StatusBadge
+              status={brokerStatus}
+              label={`HiveMQ · ${brokerStatus === 'connected' ? lv('connected', lang) : brokerStatus === 'reconnecting' ? lv('reconnecting', lang) : lv('disconnected', lang)}`}
+              C={C}
+            />
+            {/* Data point counter */}
+            {selectedId && selectedHistory.length > 0 && (
+              <span style={{
+                fontSize: 11, fontFamily: "'DM Mono', monospace", color: C.faint,
+                background: C.accentBg, border: `1px solid ${C.accentBorder}`,
+                borderRadius: 100, padding: '4px 10px',
+              }}>
+                {selectedHistory.length} {lv('dataPoints', lang)}
+              </span>
+            )}
             {/* Add device */}
             <button
               onClick={() => setShowAddModal(true)}
@@ -486,6 +489,7 @@ export default function IoTDashboard() {
         <div style={{
           background: C.cardBg, border: `1px solid ${C.cardBorder}`,
           borderRadius: 16, overflow: 'hidden',
+          position: 'sticky', top: 16,
         }}>
           <div style={{
             padding: '12px 16px', fontSize: 11, fontWeight: 700,
@@ -519,8 +523,9 @@ export default function IoTDashboard() {
               const isPowered = device.state?.power === true || device.state?.power === 'on'
               const isOnline  = device.state?.online !== false
               const isSelected = device.id === selectedId
+              const hasData = (sensorHistory[device.id]?.length || 0) > 0
               return (
-                <button key={device.id} onClick={() => setSelectedId(device.id)} style={{
+                <button key={device.id} onClick={() => { setSelectedId(device.id); localStorage.setItem('selectedDeviceId', device.id) }} style={{
                   display: 'flex', alignItems: 'center', gap: 10,
                   padding: '11px 14px', width: '100%', textAlign: 'left',
                   background: isSelected ? C.accentBg : 'transparent',
@@ -543,9 +548,23 @@ export default function IoTDashboard() {
                     }}>{device.id}</div>
                   </div>
                   {/* Status dots */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                    <span style={{ width: 7, height: 7, borderRadius: '50%', background: isOnline ? C.accent : C.faint, display: 'inline-block' }} />
-                    <span style={{ width: 7, height: 7, borderRadius: '50%', background: isPowered ? '#f59e0b' : 'transparent', border: `1px solid ${C.cardBorder}`, display: 'inline-block' }} />
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 3, alignItems: 'center' }}>
+                    <span style={{
+                      width: 7, height: 7, borderRadius: '50%',
+                      background: isOnline ? C.accent : C.faint, display: 'inline-block',
+                      boxShadow: isOnline ? `0 0 4px ${C.accent}` : 'none',
+                    }} />
+                    <span style={{
+                      width: 7, height: 7, borderRadius: '50%',
+                      background: isPowered ? '#f59e0b' : 'transparent',
+                      border: `1px solid ${C.cardBorder}`, display: 'inline-block',
+                    }} />
+                    {hasData && (
+                      <span style={{
+                        width: 7, height: 7, borderRadius: '50%',
+                        background: '#3b82f6', display: 'inline-block',
+                      }} title="Has data" />
+                    )}
                   </div>
                 </button>
               )
@@ -554,7 +573,7 @@ export default function IoTDashboard() {
         </div>
 
         {/* ── Main panel ── */}
-        <div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           {!selected ? (
             <div style={{
               display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
@@ -577,14 +596,97 @@ export default function IoTDashboard() {
               )}
             </div>
           ) : (
-            <DevicePanel
-              device={selected}
-              onTogglePower={togglePower}
-              onSendCommand={sendCommand}
-              onRemove={handleRemove}
-              lang={lang}
-              C={C}
-            />
+            <>
+              {/* Device header card */}
+              <div style={{
+                background: C.cardBg, border: `1px solid ${C.cardBorder}`,
+                borderRadius: 16, padding: '18px 22px',
+                display: 'flex', alignItems: 'center', gap: 16,
+              }}>
+                <div style={{
+                  width: 52, height: 52, borderRadius: 14, fontSize: 28,
+                  background: C.accentBg, border: `1px solid ${C.accentBorder}`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  flexShrink: 0,
+                }}>{selected.icon || '📡'}</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 22, fontWeight: 700, color: C.heading, lineHeight: 1 }}>
+                    {selected.name}
+                  </div>
+                  <div style={{
+                    fontSize: 12, color: C.faint, marginTop: 4,
+                    fontFamily: "'DM Mono', monospace",
+                    display: 'flex', alignItems: 'center', gap: 8,
+                  }}>
+                    ID: {selected.id}
+                    <span style={{
+                      background: selected.state?.online !== false ? C.accentBg : C.divider,
+                      color: selected.state?.online !== false ? C.accent : C.faint,
+                      border: `1px solid ${selected.state?.online !== false ? C.accentBorder : C.cardBorder}`,
+                      borderRadius: 100, padding: '1px 8px', fontSize: 10,
+                    }}>
+                      {selected.state?.online !== false ? lv('online', lang) : lv('offline', lang)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Sensor Stat Cards */}
+              <SensorStatCards
+                latestData={selectedLatest}
+                previousData={selectedPrevious}
+              />
+
+              {/* Range picker + loading hint */}
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+                padding: '6px 2px',
+              }}>
+                {['1h', '6h', '24h', '7d', '30d', '90d'].map(r => {
+                  const active = r === range
+                  return (
+                    <button key={r} onClick={() => setRange(r)} style={{
+                      padding: '5px 12px', borderRadius: 6, fontSize: 12,
+                      fontFamily: "'DM Mono', monospace", cursor: 'pointer',
+                      border: `1px solid ${active ? C.accent : C.cardBorder}`,
+                      background: active ? C.accentBg : 'transparent',
+                      color: active ? C.accent : C.faint,
+                      fontWeight: active ? 600 : 400,
+                      transition: 'all 0.15s',
+                    }}>{r}</button>
+                  )
+                })}
+                {historyLoading && (
+                  <span style={{
+                    fontSize: 11, color: C.faint,
+                    fontFamily: "'DM Mono', monospace", marginLeft: 4,
+                  }}>Loading…</span>
+                )}
+              </div>
+
+              {/* Multi-metric Chart */}
+              <MultiChart
+                data={historyData}
+                metrics={['temperature', 'humidity', 'co2', 'ch4', 'pressure', 'light']}
+              />
+
+              {/* Report Exporter */}
+              <ReportExporter
+                device={selected}
+                lang={lang}
+                C={C}
+              />
+
+              {/* Device controls */}
+              <DeviceControlPanel
+                device={selected}
+                onTogglePower={togglePower}
+                onSendCommand={sendCommand}
+                onRemove={handleRemove}
+                lang={lang}
+                C={C}
+              />
+            </>
           )}
         </div>
       </div>

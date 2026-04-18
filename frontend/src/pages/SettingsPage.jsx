@@ -1,9 +1,13 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../supabaseClient'
 import { useLang } from '../contexts/LangContext'
 import { useTheme } from '../contexts/ThemeContext'
 import { useColors } from '../hooks/useColors'
+import { useAuth } from '../hooks/useAuth'
 import { t } from '../i18n'
+import toast from 'react-hot-toast'
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
 
 function Tab({ label, active, onClick, C }) {
   return (
@@ -58,15 +62,188 @@ function Toggle({ value, onChange, label, C }) {
   )
 }
 
+// ─── Avatar Upload with crop preview ──────────────────────────────────────────
+function AvatarUpload({ currentUrl, onUpload, C, lang, user }) {
+  const fileRef = useRef()
+  const canvasRef = useRef()
+  const [preview, setPreview] = useState(null)
+  const [uploading, setUploading] = useState(false)
+  const [rawFile, setRawFile] = useState(null)
+
+  const handleFileSelect = (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setRawFile(file)
+
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      const img = new Image()
+      img.onload = () => {
+        // Crop to square (center crop)
+        const canvas = canvasRef.current
+        const size = 256
+        canvas.width = size
+        canvas.height = size
+        const ctx = canvas.getContext('2d')
+
+        const srcSize = Math.min(img.width, img.height)
+        const sx = (img.width - srcSize) / 2
+        const sy = (img.height - srcSize) / 2
+
+        ctx.drawImage(img, sx, sy, srcSize, srcSize, 0, 0, size, size)
+        setPreview(canvas.toDataURL('image/webp', 0.85))
+      }
+      img.src = ev.target.result
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const handleUpload = async () => {
+    if (!preview || !user?.id) return
+    setUploading(true)
+    try {
+      const res = await fetch(preview)
+      const blob = await res.blob()
+
+      const filePath = `${user.id}/avatar.webp`
+
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(filePath, blob, { upsert: true, contentType: 'image/webp' })
+
+      if (uploadError) { toast.error(uploadError.message); return }
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(filePath)
+
+      onUpload(publicUrl)
+      setPreview(null)
+      setRawFile(null)
+      toast.success('Avatar updated!')
+    } catch (err) {
+      toast.error(err.message || 'Upload failed')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const displayUrl = preview || currentUrl || ''
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 20, marginBottom: 20 }}>
+      <canvas ref={canvasRef} style={{ display: 'none' }} />
+
+      {/* Avatar preview */}
+      <div
+        onClick={() => fileRef.current?.click()}
+        style={{
+          width: 88, height: 88, borderRadius: 18, overflow: 'hidden',
+          border: `2px dashed ${preview ? C.accent : C.cardBorder}`,
+          background: C.inputBg, cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          transition: 'border-color 0.2s',
+          position: 'relative',
+        }}
+      >
+        {displayUrl ? (
+          <img src={displayUrl} alt="Avatar" style={{
+            width: '100%', height: '100%', objectFit: 'cover',
+          }} />
+        ) : (
+          <span style={{ fontSize: 28, color: C.faint }}>📷</span>
+        )}
+        {/* Hover overlay */}
+        <div style={{
+          position: 'absolute', inset: 0,
+          background: 'rgba(0,0,0,0.4)', display: 'flex',
+          alignItems: 'center', justifyContent: 'center',
+          opacity: 0, transition: 'opacity 0.2s',
+          borderRadius: 16,
+        }}
+          onMouseEnter={e => e.currentTarget.style.opacity = '1'}
+          onMouseLeave={e => e.currentTarget.style.opacity = '0'}
+        >
+          <span style={{ color: '#fff', fontSize: 11, fontWeight: 500 }}>
+            {t('set_change_avatar', lang)}
+          </span>
+        </div>
+      </div>
+
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*"
+        onChange={handleFileSelect}
+        style={{ display: 'none' }}
+      />
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <span style={{ fontSize: 12, color: C.faint }}>
+          {t('set_avatar_hint', lang)}
+        </span>
+        {preview && (
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button
+              onClick={handleUpload}
+              disabled={uploading}
+              style={{
+                padding: '6px 16px', borderRadius: 8, fontSize: 12,
+                background: 'linear-gradient(135deg,#065f46,#10b981)',
+                color: '#fff', border: 'none', cursor: 'pointer',
+                fontFamily: 'inherit', opacity: uploading ? 0.5 : 1,
+              }}
+            >
+              {uploading ? '...' : t('set_upload', lang)}
+            </button>
+            <button
+              onClick={() => { setPreview(null); setRawFile(null) }}
+              style={{
+                padding: '6px 12px', borderRadius: 8, fontSize: 12,
+                background: C.cardBg, color: C.muted,
+                border: `1px solid ${C.cardBorder}`, cursor: 'pointer',
+                fontFamily: 'inherit',
+              }}
+            >
+              {t('admin_cancel', lang)}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── Main SettingsPage ────────────────────────────────────────────────────────
 export default function SettingsPage() {
   const { lang, switchLang } = useLang()
   const { theme, setTheme } = useTheme()
   const C = useColors()
+  const { user, profile, refreshProfile } = useAuth()
+
   const [tab, setTab] = useState('profile')
   const [saved, setSaved] = useState(false)
-  const [form, setForm] = useState({ displayName: '', bio: '', timezone: 'Asia/Ho_Chi_Minh' })
+  const [saving, setSaving] = useState(false)
+  const [form, setForm] = useState({
+    displayName: '',
+    bio: '',
+    timezone: 'Asia/Ho_Chi_Minh',
+    avatarUrl: '',
+  })
   const [notifs, setNotifs] = useState({ email: true, push: false, updates: true, security: true })
   const [appearance, setAppearance] = useState({ compact: false, animations: true })
+
+  // Load profile data
+  useEffect(() => {
+    if (profile) {
+      setForm(f => ({
+        ...f,
+        displayName: profile.full_name || '',
+        bio: profile.bio || '',
+        avatarUrl: profile.avatar_url || '',
+      }))
+    }
+  }, [profile])
 
   const inputStyle = {
     width: '100%', padding: '10px 14px', borderRadius: 8,
@@ -75,12 +252,45 @@ export default function SettingsPage() {
     transition: 'border-color 0.2s',
   }
 
-  const save = async () => { setSaved(true); setTimeout(() => setSaved(false), 2500) }
+  const save = async () => {
+    if (!user?.id) return
+    setSaving(true)
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          full_name: form.displayName,
+          bio: form.bio,
+          avatar_url: form.avatarUrl,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', user.id)
+
+      if (error) {
+        toast.error(error.message)
+        return
+      }
+
+      await refreshProfile()
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2500)
+    } catch (err) {
+      toast.error(err.message || 'Save failed')
+    } finally {
+      setSaving(false)
+    }
+  }
 
   const handlePwChange = async () => {
-    const { error } = await supabase.auth.resetPasswordForEmail('')
-    alert(error ? error.message : t('login_check_email', lang))
+    const email = user?.email || ''
+    if (!email) { toast.error('No email found'); return }
+    const { error } = await supabase.auth.resetPasswordForEmail(email)
+    if (error) toast.error(error.message)
+    else toast.success(t('login_check_email', lang))
   }
+
+  // Live preview name
+  const previewName = form.displayName || user?.email?.split('@')[0] || 'User'
 
   return (
     <div style={{ fontFamily: "'Inter', system-ui, sans-serif", color: C.body, maxWidth: 640 }}>
@@ -101,11 +311,50 @@ export default function SettingsPage() {
       {/* Profile tab */}
       {tab === 'profile' && (
         <Section title={t('set_profile_sec', lang)} C={C}>
+          {/* Avatar */}
+          <AvatarUpload
+            currentUrl={form.avatarUrl}
+            onUpload={(url) => setForm(f => ({ ...f, avatarUrl: url }))}
+            C={C}
+            lang={lang}
+            user={user}
+          />
+
+          {/* Live preview card */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 14,
+            padding: 16, background: C.accentBg, borderRadius: 12,
+            border: `1px solid ${C.accentBorder}`, marginBottom: 20,
+          }}>
+            <img
+              src={form.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(previewName)}&background=059669&color=ffffff&bold=true`}
+              alt=""
+              style={{ width: 44, height: 44, borderRadius: 12, objectFit: 'cover' }}
+            />
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: C.heading }}>{previewName}</div>
+              <div style={{ fontSize: 12, color: C.faint, fontFamily: "'DM Mono', monospace" }}>
+                {user?.email || ''}
+              </div>
+              {form.bio && (
+                <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>
+                  {form.bio.length > 80 ? form.bio.slice(0, 80) + '…' : form.bio}
+                </div>
+              )}
+            </div>
+            <span style={{
+              marginLeft: 'auto', fontSize: 10, color: C.accent,
+              fontFamily: "'DM Mono', monospace", opacity: 0.6,
+            }}>
+              {t('set_live_preview', lang)}
+            </span>
+          </div>
+
           <Field label={t('set_display_name', lang)} C={C}>
             <input value={form.displayName} onChange={e => setForm(f => ({ ...f, displayName: e.target.value }))} placeholder="..." style={inputStyle} />
           </Field>
           <Field label={t('set_bio', lang)} hint={t('set_bio_hint', lang)} C={C}>
-            <textarea value={form.bio} onChange={e => setForm(f => ({ ...f, bio: e.target.value }))} placeholder="..." rows={3} style={{ ...inputStyle, resize: 'vertical' }} />
+            <textarea value={form.bio} onChange={e => setForm(f => ({ ...f, bio: e.target.value }))} placeholder="..." rows={3} style={{ ...inputStyle, resize: 'vertical' }} maxLength={160} />
           </Field>
           <Field label={t('set_language', lang)} C={C}>
             <select value={lang} onChange={e => switchLang(e.target.value)} style={{ ...inputStyle, cursor: 'pointer' }}>
@@ -188,11 +437,12 @@ export default function SettingsPage() {
               {t('set_saved', lang)}
             </div>
           )}
-          <button onClick={save} style={{
+          <button onClick={save} disabled={saving} style={{
             padding: '10px 24px', borderRadius: 8, border: 'none',
             background: 'linear-gradient(135deg,#065f46,#10b981)',
             color: 'white', cursor: 'pointer', fontFamily: 'inherit', fontSize: 14, fontWeight: 500,
-          }}>{t('set_save', lang)}</button>
+            opacity: saving ? 0.6 : 1,
+          }}>{saving ? '...' : t('set_save', lang)}</button>
         </div>
       )}
     </div>

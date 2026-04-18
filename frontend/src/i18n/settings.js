@@ -48,4 +48,10 @@ export default {
         vi: 'Đăng xuất khỏi tất cả phiên đang hoạt động trên mọi thiết bị.',
     },
     set_sec_logout_btn:   { en: 'Log out all devices', vi: 'Đăng xuất tất cả thiết bị' },
+
+    // Avatar & Profile (GROUP 7)
+    set_change_avatar:    { en: 'Change',              vi: 'Đổi' },
+    set_avatar_hint:      { en: 'JPG, PNG or WebP. Will be cropped to square.', vi: 'JPG, PNG hoặc WebP. Sẽ được cắt thành hình vuông.' },
+    set_upload:           { en: 'Upload',              vi: 'Tải lên' },
+    set_live_preview:     { en: 'LIVE PREVIEW',        vi: 'XEM TRƯỚC' },
 }

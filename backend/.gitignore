@@ -4,6 +4,7 @@
 !.env.example
 **/.env
 **/.env.local
+*.backup
 
 # Node
 node_modules/
