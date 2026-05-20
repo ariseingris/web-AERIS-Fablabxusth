@@ -1,0 +1,4 @@
+- Use functional React components
+- Use hooks only
+- Clean folder structure
+- No console.log in production

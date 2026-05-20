@@ -1,10 +1,317 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
 import { useLang } from '../contexts/LangContext'
 import { t } from '../i18n'
 import { useColors } from '../hooks/useColors'
 import { useAuth } from '../hooks/useAuth'
+import { useSubscription } from '../contexts/SubscriptionContext'
+import toast from 'react-hot-toast'
+import * as XLSX from 'xlsx'
+import { useMqttBridge } from '../hooks/useMqttBridge'
+
+// ── Metric options for export modal ───────────────────────────────────────────
+const METRIC_OPTIONS = [
+  { key: 'all',         label: '📋 Tất cả / All metrics' },
+  { key: 'temperature', label: '🌡️ Temperature' },
+  { key: 'humidity',    label: '💧 Humidity' },
+  { key: 'co2',         label: '🌿 CO₂' },
+  { key: 'ch4',         label: '💨 CH₄' },
+  { key: 'pressure',    label: '🔵 Pressure' },
+  { key: 'light',       label: '☀️ Light' },
+  { key: 'gas',         label: '⚡ Gas' },
+  { key: 'soil',        label: '🌱 Soil' },
+]
+
+const RANGE_OPTIONS = [
+  { label: '1h',  hours: 1   },
+  { label: '24h', hours: 24  },
+  { label: '7d',  hours: 168 },
+  { label: '30d', hours: 720 },
+]
+
+const FORMAT_EXT = { excel: '.xlsx', latex: '.tex', docs: '.html' }
+const FORMAT_LABEL = { excel: 'Excel', latex: 'LaTeX', docs: 'Google Docs' }
+
+// ── Helper: trigger file download from string content ─────────────────────────
+function downloadBlob(content, filename, mime) {
+  const blob = new Blob([content], { type: mime })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url; a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+// ── Export Options Modal ──────────────────────────────────────────────────────
+function ExportOptionsModal({ format, deviceOptions, onClose, lang, C }) {
+  const [cfgDevice, setCfgDevice]     = useState('')
+  const [cfgMetric, setCfgMetric]     = useState('all')
+  const [cfgRange, setCfgRange]       = useState(24)
+  const [cfgFilename, setCfgFilename] = useState('')
+  const [exporting, setExporting]     = useState(false)
+
+  const ext = FORMAT_EXT[format] || '.xlsx'
+  const fmtLabel = FORMAT_LABEL[format] || format
+
+  const runExport = async () => {
+    if (!cfgDevice) return
+    setExporting(true)
+    try {
+      // 1. Fetch via backend API — same path useHistoricalData uses
+      //    (bypasses Supabase RLS, which blocks direct frontend reads)
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
+      const since = new Date(Date.now() - cfgRange * 60 * 60 * 1000).toISOString()
+      const params = new URLSearchParams({ limit: '5000', from: since })
+      const resp = await fetch(
+        `${API_URL}/api/iot/data/${encodeURIComponent(cfgDevice)}?${params}`
+      )
+      if (!resp.ok) throw new Error(`Server error ${resp.status}`)
+      const { data: rawRows } = await resp.json()
+
+      if (!rawRows || rawRows.length === 0) {
+        // Probe without time filter to distinguish "no data ever" vs "not in range"
+        const probeParams = new URLSearchParams({ limit: '1' })
+        const probeResp = await fetch(
+          `${API_URL}/api/iot/data/${encodeURIComponent(cfgDevice)}?${probeParams}`
+        )
+        const { data: probeRows } = await probeResp.json()
+        if (!probeRows || probeRows.length === 0) {
+          toast.error(lang === 'vi'
+            ? 'Thiết bị này chưa có dữ liệu nào.'
+            : 'This device has no recorded data yet.')
+        } else {
+          const lastTs = new Date(probeRows[0].timestamp).toLocaleString()
+          toast.error(lang === 'vi'
+            ? `Không có dữ liệu trong khoảng này. Dữ liệu gần nhất: ${lastTs}`
+            : `No data in this range. Last reading: ${lastTs}`)
+        }
+        return
+      }
+
+      // 2. Filter to selected metric(s) if not "all"
+      const allMetrics = ['temperature','humidity','co2','ch4','pressure','light','gas','soil']
+      const metricCols = cfgMetric === 'all' ? allMetrics : [cfgMetric]
+      const keepCols = ['timestamp', ...metricCols]
+
+      const rows = rawRows.map(r => {
+        const filtered = {}
+        for (const k of keepCols) {
+          if (k in r) filtered[k] = r[k]
+        }
+        return filtered
+      })
+
+      // 3. Check if the chosen metric actually has data
+      if (cfgMetric !== 'all') {
+        const hasValue = rows.some(r => r[cfgMetric] !== null && r[cfgMetric] !== undefined)
+        if (!hasValue) {
+          toast.error(lang === 'vi'
+            ? `Thiết bị này không ghi nhận "${cfgMetric}".`
+            : `This device does not report "${cfgMetric}".`)
+          return
+        }
+      }
+
+      // 4. Resolve filename
+      const safeBase = (cfgFilename || `sensor_${cfgDevice}_${Date.now()}`)
+        .replace(/[^\w.-]/g, '_')
+
+      // 5. Format-specific export
+      if (format === 'excel') {
+        const ws = XLSX.utils.json_to_sheet(rows)
+        const wb = XLSX.utils.book_new()
+        XLSX.utils.book_append_sheet(wb, ws, 'Sensor Data')
+        ws['!cols'] = Object.keys(rows[0]).map(k => ({ wch: Math.max(k.length, 14) }))
+        XLSX.writeFile(wb, `${safeBase}.xlsx`)
+      }
+      else if (format === 'latex') {
+        const cols = Object.keys(rows[0])
+        const header = cols.join(' & ') + ' \\\\'
+        const body = rows.map(r =>
+          cols.map(c => String(r[c] ?? '-').replace(/_/g, '\\_')).join(' & ') + ' \\\\'
+        ).join('\n')
+        const tex = `\\begin{table}[h]
+\\centering
+\\caption{Sensor Data — ${cfgDevice}}
+\\begin{tabular}{${'l'.repeat(cols.length)}}
+\\hline
+${header}
+\\hline
+${body}
+\\hline
+\\end{tabular}
+\\end{table}`
+        downloadBlob(tex, `${safeBase}.tex`, 'text/plain;charset=utf-8;')
+      }
+      else if (format === 'docs') {
+        const cols = Object.keys(rows[0])
+        const html = `<table border="1" cellspacing="0" cellpadding="4">
+<thead><tr>${cols.map(c => `<th>${c}</th>`).join('')}</tr></thead>
+<tbody>${rows.map(r => `<tr>${cols.map(c => `<td>${r[c] ?? ''}</td>`).join('')}</tr>`).join('')}</tbody>
+</table>`
+        downloadBlob(html, `${safeBase}.html`, 'text/html;charset=utf-8;')
+      }
+
+      toast.success(lang === 'vi' ? 'Đã xuất file' : 'Export complete')
+      onClose()
+    } catch (e) {
+      toast.error(e.message)
+    } finally {
+      setExporting(false)
+    }
+  }
+
+  const inputStyle = {
+    width: '100%', background: C.accentBg, border: `1px solid ${C.cardBorder}`,
+    borderRadius: 8, padding: '9px 12px', color: C.body, fontSize: 13,
+    fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box',
+  }
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 300,
+        background: 'rgba(0,0,0,0.55)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        backdropFilter: 'blur(4px)',
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: C.cardBg, border: `1px solid ${C.cardBorder}`,
+          borderRadius: 16, padding: 28, width: 440, maxWidth: '92vw',
+          display: 'flex', flexDirection: 'column', gap: 16,
+          boxShadow: '0 24px 60px rgba(0,0,0,0.4)',
+          animation: 'exportModalIn 0.22s cubic-bezier(0.34,1.56,0.64,1)',
+        }}
+      >
+        {/* Title */}
+        <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: C.heading, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 22 }}>📤</span>
+          {lang === 'vi' ? `Xuất file ${fmtLabel}` : `Export as ${fmtLabel}`}
+        </h3>
+
+        {/* Device picker */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <label style={{ fontSize: 12, color: C.subheading, fontWeight: 600 }}>
+            {lang === 'vi' ? 'Thiết bị' : 'Device'}
+          </label>
+          <select value={cfgDevice} onChange={e => setCfgDevice(e.target.value)} style={inputStyle}>
+            <option value="">{lang === 'vi' ? '-- Chọn thiết bị --' : '-- Select device --'}</option>
+            {deviceOptions.map(d => (
+              <option key={d.id} value={d.id}>
+                {d.icon} {d.name} ({d.id})
+              </option>
+            ))}
+          </select>
+          {deviceOptions.length === 0 && (
+            <div style={{ fontSize: 12, color: C.faint, marginTop: 6 }}>
+              {lang === 'vi'
+                ? 'Chưa có thiết bị nào. Thêm thiết bị ở Trung tâm IoT trước.'
+                : 'No devices found. Add one in the IoT Control Center first.'}
+            </div>
+          )}
+        </div>
+
+        {/* Metric picker */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <label style={{ fontSize: 12, color: C.subheading, fontWeight: 600 }}>
+            {lang === 'vi' ? 'Loại dữ liệu' : 'Metric'}
+          </label>
+          <select value={cfgMetric} onChange={e => setCfgMetric(e.target.value)} style={inputStyle}>
+            {METRIC_OPTIONS.map(m => (
+              <option key={m.key} value={m.key}>{m.label}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Time range pills */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <label style={{ fontSize: 12, color: C.subheading, fontWeight: 600 }}>
+            {lang === 'vi' ? 'Khoảng thời gian' : 'Time Range'}
+          </label>
+          <div style={{ display: 'flex', gap: 6 }}>
+            {RANGE_OPTIONS.map(({ label, hours }) => {
+              const active = cfgRange === hours
+              return (
+                <button
+                  key={hours}
+                  onClick={() => setCfgRange(hours)}
+                  style={{
+                    flex: 1, padding: '7px 0', borderRadius: 8, fontSize: 13,
+                    fontFamily: "'DM Mono', monospace", cursor: 'pointer',
+                    border: `1px solid ${active ? C.accent : C.cardBorder}`,
+                    background: active ? C.accentBg : 'transparent',
+                    color: active ? C.accent : C.subheading,
+                    fontWeight: active ? 700 : 400,
+                    transition: 'all 0.15s',
+                  }}
+                >{label}</button>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Filename input */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <label style={{ fontSize: 12, color: C.subheading, fontWeight: 600 }}>
+            {lang === 'vi' ? 'Tên file' : 'Filename'}
+          </label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
+            <input
+              value={cfgFilename}
+              onChange={e => setCfgFilename(e.target.value)}
+              placeholder={`sensor_${cfgDevice || 'device'}_${Date.now()}`}
+              style={{ ...inputStyle, borderTopRightRadius: 0, borderBottomRightRadius: 0, flex: 1 }}
+            />
+            <span style={{
+              background: C.accentBg, border: `1px solid ${C.cardBorder}`,
+              borderLeft: 'none', borderRadius: '0 8px 8px 0',
+              padding: '9px 12px', fontSize: 13, color: C.faint,
+              fontFamily: "'DM Mono', monospace", whiteSpace: 'nowrap',
+            }}>{ext}</span>
+          </div>
+        </div>
+
+        {/* Footer buttons */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
+          <button onClick={onClose} style={{
+            padding: '9px 18px', borderRadius: 8, cursor: 'pointer',
+            background: 'transparent', border: `1px solid ${C.cardBorder}`,
+            color: C.subheading, fontSize: 13, fontFamily: 'inherit',
+          }}>{lang === 'vi' ? 'Huỷ' : 'Cancel'}</button>
+          <button
+            onClick={runExport}
+            disabled={!cfgDevice || exporting}
+            style={{
+              padding: '9px 22px', borderRadius: 8, cursor: (!cfgDevice || exporting) ? 'not-allowed' : 'pointer',
+              background: (!cfgDevice || exporting) ? C.accentBg : C.accentBgStrong,
+              border: `1px solid ${C.accentBorderStrong}`,
+              color: (!cfgDevice || exporting) ? C.faint : C.accent,
+              fontSize: 13, fontWeight: 600, fontFamily: 'inherit',
+              display: 'flex', alignItems: 'center', gap: 8,
+              transition: 'all 0.15s',
+            }}
+          >
+            {exporting && (
+              <span style={{
+                width: 14, height: 14, display: 'inline-block',
+                border: `2px solid ${C.accent}`, borderTopColor: 'transparent',
+                borderRadius: '50%', animation: 'exportSpin 0.8s linear infinite',
+              }} />
+            )}
+            {exporting
+              ? (lang === 'vi' ? 'Đang xuất...' : 'Exporting...')
+              : (lang === 'vi' ? 'Xuất' : 'Export')}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 function Sparkline({ data, color = '#10b981' }) {
   const max = Math.max(...data)
@@ -87,11 +394,17 @@ export default function Dashboard() {
   const { lang } = useLang()
   const C = useColors()
   const { profile, user } = useAuth()
+  const { showUpsell, isPro } = useSubscription()
+  const { devices: mqttDevices } = useMqttBridge()
 
   const navigate = useNavigate()
   const [myGroup, setMyGroup] = useState(null)
   const [groupLoading, setGroupLoading] = useState(true)
   const [userCount, setUserCount] = useState(null)
+  const [exportOpen, setExportOpen] = useState(false)
+  const [exportModal, setExportModal] = useState(null)   // 'excel'|'latex'|'docs'|null
+  const [dbDeviceIds, setDbDeviceIds] = useState([])
+  const exportRef = useRef(null)
 
   useEffect(() => {
     const fetchMyGroup = async () => {
@@ -124,6 +437,55 @@ export default function Dashboard() {
     }
     fetchUserCount()
   }, [])
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (exportRef.current && !exportRef.current.contains(e.target)) {
+        setExportOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  // Fetch registered devices from backend as fallback
+  useEffect(() => {
+    if (!exportModal) return
+    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
+    fetch(`${API_URL}/api/iot/devices`)
+      .then(r => r.json())
+      .then(({ devices }) => {
+        const ids = (devices ?? []).map(d => d.device_id).filter(Boolean)
+        setDbDeviceIds(ids)
+      })
+      .catch(() => setDbDeviceIds([]))
+  }, [exportModal])
+
+  // Merge mqttDevices + DB-only fallback device_ids
+  const deviceOptions = useMemo(() => {
+    const seen = new Set()
+    const out = []
+    for (const d of mqttDevices ?? []) {
+      if (!d?.id || seen.has(d.id)) continue
+      seen.add(d.id)
+      out.push({ id: d.id, name: d.name || d.id, icon: d.icon || '📡' })
+    }
+    for (const id of dbDeviceIds) {
+      if (seen.has(id)) continue
+      seen.add(id)
+      out.push({ id, name: id, icon: '📊' })
+    }
+    return out
+  }, [mqttDevices, dbDeviceIds])
+
+  const openExportModal = (format) => {
+    setExportOpen(false)
+    if ((format === 'latex' || format === 'docs') && !isPro) {
+      showUpsell('export')
+      return
+    }
+    setExportModal(format)
+  }
 
   const userName = profile?.full_name
     || user?.email?.split('@')[0]
@@ -171,7 +533,11 @@ export default function Dashboard() {
 
   return (
     <div style={{ fontFamily: "'Inter', system-ui, sans-serif", color: C.body, minHeight: '100vh' }}>
-      <style>{`*{box-sizing:border-box}`}</style>
+      <style>{`
+        *{box-sizing:border-box}
+        @keyframes exportModalIn{from{opacity:0;transform:scale(0.92)}to{opacity:1;transform:scale(1)}}
+        @keyframes exportSpin{100%{transform:rotate(360deg)}}
+      `}</style>
 
       {/* Welcome banner */}
       <div style={{ marginBottom: 32 }}>
@@ -185,21 +551,108 @@ export default function Dashboard() {
             </p>
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {quickActions.map(({ label, icon }) => (
-              <button key={label}
-                onClick={() => {
-                  if (label === t('dash_qa_invite', lang)) navigate('/dashboard/groups')
-                }}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 6,
-                  padding: '8px 14px', borderRadius: 8,
-                  background: C.accentBgStrong, border: `1px solid ${C.accentBorderStrong}`,
-                  color: C.subheading, fontSize: 13, cursor: 'pointer', transition: 'all 0.2s', fontFamily: 'inherit',
-                }}
-                onMouseEnter={e => { e.currentTarget.style.background = C.accentBg; e.currentTarget.style.color = C.accent }}
-                onMouseLeave={e => { e.currentTarget.style.background = C.accentBgStrong; e.currentTarget.style.color = C.subheading }}
-              >{icon}{label}</button>
-            ))}
+            {quickActions.map(({ label, icon }) => {
+              const isExport = label === t('dash_qa_export', lang)
+
+              if (isExport) {
+                return (
+                  <div key={label} ref={exportRef} style={{ position: 'relative' }}>
+                    {/* Trigger button */}
+                    <button
+                      onClick={() => setExportOpen(v => !v)}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 6,
+                        padding: '8px 14px', borderRadius: 8,
+                        background: exportOpen ? C.accentBg : C.accentBgStrong,
+                        border: `1px solid ${C.accentBorderStrong}`,
+                        color: exportOpen ? C.accent : C.subheading,
+                        fontSize: 13, cursor: 'pointer', transition: 'all 0.2s',
+                        fontFamily: 'inherit',
+                      }}
+                    >{icon}{label}</button>
+
+                    {/* Dropdown panel */}
+                    {exportOpen && (
+                      <div style={{
+                        position: 'absolute', top: 'calc(100% + 8px)', right: 0,
+                        background: C.cardBg, border: `1px solid ${C.cardBorder}`,
+                        borderRadius: 16, padding: 20, zIndex: 200, minWidth: 220,
+                        boxShadow: '0 12px 40px rgba(0,0,0,0.35)',
+                      }}>
+                        {/* Section title */}
+                        <div style={{
+                          fontSize: 13, fontWeight: 700, color: C.heading,
+                          marginBottom: 14, letterSpacing: '0.06em',
+                          textTransform: 'uppercase',
+                        }}>
+                          {lang === 'vi' ? 'Xuất file' : 'Export as'}
+                        </div>
+
+                        {/* Format options */}
+                        {[
+                          { format: 'excel', label: '📊 Excel (.xlsx)', pro: false },
+                          { format: 'latex', label: '📄 LaTeX',         pro: true  },
+                          { format: 'docs',  label: '📝 Google Docs',   pro: true  },
+                        ].map(({ format, label: fLabel, pro }) => (
+                          <button
+                            key={format}
+                            onClick={() => openExportModal(format)}
+                            style={{
+                              display: 'flex', alignItems: 'center',
+                              justifyContent: 'space-between',
+                              width: '100%', padding: '10px 14px',
+                              borderRadius: 10, marginBottom: 4,
+                              background: 'none', border: '1px solid transparent',
+                              color: C.body, fontSize: 14, cursor: 'pointer',
+                              fontFamily: 'inherit', textAlign: 'left',
+                              transition: 'all 0.15s', gap: 8,
+                            }}
+                            onMouseEnter={e => {
+                              e.currentTarget.style.background = C.accentBg
+                              e.currentTarget.style.borderColor = C.accentBorder
+                            }}
+                            onMouseLeave={e => {
+                              e.currentTarget.style.background = 'none'
+                              e.currentTarget.style.borderColor = 'transparent'
+                            }}
+                          >
+                            <span>{fLabel}</span>
+                            {pro && (
+                              <span style={{
+                                fontSize: 10, fontWeight: 700,
+                                fontFamily: "'DM Mono', monospace",
+                                background: 'linear-gradient(135deg,#f59e0b,#d97706)',
+                                color: '#000', borderRadius: 100, padding: '2px 7px',
+                                flexShrink: 0,
+                              }}>PRO</span>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              }
+
+              // All other quick action buttons (unchanged)
+              return (
+                <button key={label}
+                  onClick={() => {
+                    if (label === t('dash_qa_invite', lang)) navigate('/dashboard/groups')
+                    if (label === t('dash_qa_ai', lang))     navigate('/dashboard/ai')
+                  }}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    padding: '8px 14px', borderRadius: 8,
+                    background: C.accentBgStrong, border: `1px solid ${C.accentBorderStrong}`,
+                    color: C.subheading, fontSize: 13, cursor: 'pointer',
+                    transition: 'all 0.2s', fontFamily: 'inherit',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = C.accentBg; e.currentTarget.style.color = C.accent }}
+                  onMouseLeave={e => { e.currentTarget.style.background = C.accentBgStrong; e.currentTarget.style.color = C.subheading }}
+                >{icon}{label}</button>
+              )
+            })}
           </div>
         </div>
       </div>
@@ -330,6 +783,17 @@ export default function Dashboard() {
       <div style={{ marginTop: 32, paddingBottom: 24, textAlign: 'center', fontSize: 13, color: C.muted }}>
         Powered by AERIS Core Engine © 2026.
       </div>
+
+      {/* Export Options Modal */}
+      {exportModal && (
+        <ExportOptionsModal
+          format={exportModal}
+          deviceOptions={deviceOptions}
+          onClose={() => setExportModal(null)}
+          lang={lang}
+          C={C}
+        />
+      )}
     </div>
   )
 }

@@ -1,0 +1,4 @@
+- RESTful API
+- Use /api/*
+- Always validate input
+- Return JSON

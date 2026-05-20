@@ -1,0 +1,17 @@
+◇ injected env (11) from .env // tip: ⌘ enable debugging { debug: true }
+🔌  MQTT bridge attached at ws://…/ws
+Run at Port: 5000
+WebSocket  : ws://localhost:5000/ws
+✅  MQTT connected: mqtts://9df9b7f54e0b41cdb8afd8fab379c0a3.s1.eu.hivemq.cloud:8883
+[AI model-info] Cannot reach AI service: fetch failed
+[AI health] Cannot reach AI service: fetch failed
+[AI model-info] Cannot reach AI service: fetch failed
+[AI health] Cannot reach AI service: fetch failed
+[AI model-info] Cannot reach AI service: fetch failed
+[AI health] Cannot reach AI service: fetch failed
+[AI health] Cannot reach AI service: fetch failed
+[AI model-info] Cannot reach AI service: fetch failed
+[AI model-info] Cannot reach AI service: fetch failed
+[AI health] Cannot reach AI service: fetch failed
+[AI health] Cannot reach AI service: fetch failed
+[AI model-info] Cannot reach AI service: fetch failed
