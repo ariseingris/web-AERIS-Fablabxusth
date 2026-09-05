@@ -52,6 +52,8 @@ const L = {
   dataPoints:    { vi: 'điểm dữ liệu',        en: 'data points' },
   liveData:      { vi: 'Dữ liệu trực tiếp',   en: 'Live Data' },
   controls:      { vi: 'Điều khiển',           en: 'Controls' },
+  rawData:       { vi: 'Dữ liệu Raw',          en: 'Raw Data' },
+  normalizedData:{ vi: 'Đã chuẩn hoá',         en: 'Normalized' },
   // Add modal
   addTitle:      { vi: 'Thêm thiết bị IoT',   en: 'Add IoT Device' },
   deviceId:      { vi: 'Device ID',            en: 'Device ID' },
@@ -392,6 +394,14 @@ export default function IoTDashboard() {
   )
   const [showAddModal, setShowAddModal] = useState(false)
   const [range,        setRange]        = useState('7d')
+  const [displayMode, setDisplayMode] = useState('normalized')
+
+  const handleToggleDisplayMode = useCallback((mode) => {
+    setDisplayMode(mode)
+    if (selectedId) {
+      sendCommand(selectedId, mode === 'raw' ? 'DISPLAY_RAW' : 'DISPLAY_NORMALIZED')
+    }
+  }, [selectedId, sendCommand])
 
   const { data: historyData, loading: historyLoading } = useHistoricalData(selectedId, range)
 
@@ -631,11 +641,37 @@ export default function IoTDashboard() {
                 </div>
               </div>
 
-              {/* Sensor Stat Cards */}
-              <SensorStatCards
-                latestData={selectedLatest}
-                previousData={selectedPrevious}
-              />
+              {/* Raw / Normalized toggle */}
+              <div style={{ display: 'flex', gap: 8 }}>
+                {['normalized', 'raw'].map(mode => (
+                  <button key={mode} onClick={() => handleToggleDisplayMode(mode)} style={{
+                    padding: '6px 14px', borderRadius: 6, fontSize: 12, cursor: 'pointer',
+                    border: `1px solid ${displayMode === mode ? C.accent : C.cardBorder}`,
+                    background: displayMode === mode ? C.accentBg : 'transparent',
+                    color: displayMode === mode ? C.accent : C.faint,
+                    fontWeight: displayMode === mode ? 600 : 400,
+                    fontFamily: "'DM Mono', monospace",
+                  }}>
+                    {mode === 'raw' ? lv('rawData', lang) : lv('normalizedData', lang)}
+                  </button>
+                ))}
+              </div>
+
+              {/* Sensor Stat Cards — normalized OR raw */}
+              {displayMode === 'normalized' ? (
+                <SensorStatCards latestData={selectedLatest} previousData={selectedPrevious} />
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12 }}>
+                  {['temperature', 'humidity', 'co2', 'ch4', 'pressure', 'light'].map(key => (
+                    <SensorCard
+                      key={key}
+                      sensorKey={key}
+                      data={{ value: selectedLatest[`${key}_raw`] ?? '—', unit: 'ADC' }}
+                      C={C}
+                    />
+                  ))}
+                </div>
+              )}
 
               {/* Range picker + loading hint */}
               <div style={{

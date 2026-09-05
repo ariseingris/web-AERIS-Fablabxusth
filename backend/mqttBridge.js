@@ -276,8 +276,20 @@ module.exports = function attachMqttBridge(httpServer) {
           light:       sanitize(parsed.lux,  -999),
           gas:         sanitize(parsed.gas,  -1),
         };
+        const RAW_KEY_MAP = {
+          temperature: 'temp', humidity: 'hum', co2: 'co2', ch4: 'ch4',
+          pressure: 'pressure', light: 'lux',
+        };
+        const rawReadings = (parsed.raw && typeof parsed.raw === 'object') ? parsed.raw : {};
         for (const [key, value] of Object.entries(uiReadings)) {
-          if (value !== null) state.sensors[key] = { value, unit: '', timestamp: ts };
+          if (value !== null) {
+            state.sensors[key] = {
+              value,
+              raw: rawReadings[RAW_KEY_MAP[key]] ?? null,
+              unit: '',
+              timestamp: ts,
+            };
+          }
         }
         for (const key of ['soil', 'fan', 'piston']) {
           if (parsed[key] !== undefined && parsed[key] !== null) {
@@ -407,7 +419,10 @@ module.exports = function attachMqttBridge(httpServer) {
 
         case 'control': {
           const { deviceId, command } = msg;
-          const VALID = new Set(['SYSTEM_ON', 'SYSTEM_OFF', 'FAN_ON', 'FAN_OFF', 'PISTON_OPEN', 'PISTON_CLOSE']);
+          const VALID = new Set([
+            'SYSTEM_ON', 'SYSTEM_OFF', 'FAN_ON', 'FAN_OFF', 'PISTON_OPEN', 'PISTON_CLOSE',
+            'DISPLAY_RAW', 'DISPLAY_NORMALIZED', 'DISPLAY_BOTH',
+          ]);
           if (!VALID.has(command)) {
             console.warn('Rejecting unknown command', command);
             break;

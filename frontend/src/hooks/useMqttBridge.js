@@ -38,6 +38,9 @@ export function useMqttBridge() {
       if (typeof val === 'number' || typeof val === 'string') {
         row[key] = typeof val === 'string' ? parseFloat(val) || 0 : val;
       }
+      if (typeof data?.raw === 'number') {
+        row[`${key}_raw`] = data.raw;
+      }
     }
     return row;
   }
