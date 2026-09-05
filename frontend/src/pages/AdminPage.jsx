@@ -73,8 +73,11 @@ function ModerationTab({ C, lang }) {
       const session = (await supabase.auth.getSession()).data?.session
       const resp = await fetch(`${API_URL}/api/admin/flagged`, {
         headers: session?.access_token
-          ? { 'Authorization': `Bearer ${session.access_token}` }
-          : {},
+          ? {
+              'ngrok-skip-browser-warning': 'true',
+              'Authorization': `Bearer ${session.access_token}`,
+            }
+          : { 'ngrok-skip-browser-warning': 'true' },
       })
       if (resp.ok) {
         const data = await resp.json()
@@ -115,6 +118,7 @@ function ModerationTab({ C, lang }) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
           ...(session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {}),
         },
         body: JSON.stringify({ postId, action }),
@@ -439,6 +443,7 @@ export default function AdminPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
           ...(session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {}),
         },
         body: JSON.stringify({ userId, role: newRole }),

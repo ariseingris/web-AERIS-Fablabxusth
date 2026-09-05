@@ -1,7 +1,8 @@
 // frontend/src/hooks/useMqttBridge.js
 import { useState, useEffect, useCallback, useRef } from 'react';
 
-const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:5000/ws';
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const WS_URL = `${API_BASE.replace(/^https?:/, protocol => protocol === 'https:' ? 'wss:' : 'ws:').replace(/\/$/, '')}/ws`;
 
 const MAX_HISTORY = 1000; // keep at most 1000 data points per device
 

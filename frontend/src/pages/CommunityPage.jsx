@@ -407,7 +407,10 @@ export default function CommunityPage() {
 
     try {
       const resp = await fetch(url, {
-        headers: s?.access_token ? { 'Authorization': `Bearer ${s.access_token}` } : {}
+        headers: {
+          'ngrok-skip-browser-warning': 'true',
+          ...(s?.access_token ? { 'Authorization': `Bearer ${s.access_token}` } : {}),
+        }
       })
       if (resp.ok) {
         const data = await resp.json()
@@ -460,6 +463,7 @@ export default function CommunityPage() {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
+                'ngrok-skip-browser-warning': 'true',
                 'Authorization': `Bearer ${s.access_token}`
             },
             body: JSON.stringify({ postId, type })

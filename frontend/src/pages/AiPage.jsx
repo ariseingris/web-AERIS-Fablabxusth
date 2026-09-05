@@ -7,10 +7,10 @@ import { useAuth } from '../hooks/useAuth'
 import StatusBadge from '../components/StatusBadge'
 import toast from 'react-hot-toast'
 
-const _BASE          = import.meta.env.VITE_API_URL || 'http://localhost:5000'
-const API_URL        = `${_BASE}/api/ai/chat-proxy`
-const HEALTH_URL     = `${_BASE}/api/ai/health`
-const MODEL_INFO_URL = `${_BASE}/api/ai/model-info`
+const API_BASE       = import.meta.env.VITE_API_URL || 'http://localhost:5000'
+const API_URL        = `${API_BASE}/api/ai/chat-proxy`
+const HEALTH_URL     = `${API_BASE}/api/ai/health`
+const MODEL_INFO_URL = `${API_BASE}/api/ai/model-info`
 const RETRY_DELAYS   = [1000, 2000, 4000] // exponential backoff: 1s, 2s, 4s
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
@@ -399,7 +399,7 @@ export default function AiPage() {
   const sessionId = useRef(`session_${Date.now()}`)
 
   const checkHealth = useCallback(() => {
-    fetch(HEALTH_URL)
+    fetch(HEALTH_URL, { headers: { 'ngrok-skip-browser-warning': 'true' } })
       .then(r => r.ok ? r.json() : Promise.reject(r.status))
       .then(() => setHealthStatus('ok'))
       .catch(() => setHealthStatus('error'))
@@ -407,7 +407,7 @@ export default function AiPage() {
 
   useEffect(() => {
     checkHealth()
-    fetch(MODEL_INFO_URL)
+    fetch(MODEL_INFO_URL, { headers: { 'ngrok-skip-browser-warning': 'true' } })
       .then(r => r.ok ? r.json() : Promise.reject())
       .then(data => setModelInfo(data))
       .catch(() => {})
@@ -422,8 +422,6 @@ export default function AiPage() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, isLoading])
 
-  const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
-
   const now = () => new Date().toLocaleTimeString(lang === 'vi' ? 'vi-VN' : 'en-US', { hour: '2-digit', minute: '2-digit' })
 
   const addSystem = (text) =>
@@ -436,12 +434,13 @@ export default function AiPage() {
 
   const authHeaders = () => ({
     'Content-Type': 'application/json',
+    'ngrok-skip-browser-warning': 'true',
     ...(session ? { 'Authorization': `Bearer ${session.access_token}` } : {}),
   })
 
   const fetchUserGroups = async () => {
     try {
-      const res = await fetch(`${BASE_URL}/api/groups`, { headers: authHeaders() })
+      const res = await fetch(`${API_BASE}/api/groups`, { headers: authHeaders() })
       const data = await res.json()
       const groups = data.groups || []
       setUserGroups(groups)
@@ -478,7 +477,7 @@ export default function AiPage() {
       if (actionType === 'research') {
         const { query } = extra
         setMessages(prev => [...prev, { role: 'user', text: `Research: ${query}`, time: now() }])
-        const res = await fetch(`${BASE_URL}/api/ai/research`, {
+        const res = await fetch(`${API_BASE}/api/ai/research`, {
           method: 'POST', headers: hdrs, body: JSON.stringify({ query }),
         })
         const data = await res.json()
@@ -491,7 +490,7 @@ export default function AiPage() {
 
       else if (actionType === 'predict') {
         setMessages(prev => [...prev, { role: 'user', text: t('ai_qa_predict', lang), time: now() }])
-        const res = await fetch(`${BASE_URL}/api/ai/predict`, {
+        const res = await fetch(`${API_BASE}/api/ai/predict`, {
           method: 'POST', headers: hdrs, body: JSON.stringify({ user_confirmed: true }),
         })
         const data = await res.json()
@@ -505,7 +504,7 @@ export default function AiPage() {
       else if (actionType === 'report') {
         const { format } = extra
         setMessages(prev => [...prev, { role: 'user', text: `Generate ${format} report`, time: now() }])
-        const res = await fetch(`${BASE_URL}/api/ai/report`, {
+        const res = await fetch(`${API_BASE}/api/ai/report`, {
           method: 'POST', headers: hdrs,
           body: JSON.stringify({ user_confirmed: true, format }),
         })
@@ -529,7 +528,7 @@ export default function AiPage() {
       else if (actionType === 'schedule') {
         const { groupId } = extra
         setMessages(prev => [...prev, { role: 'user', text: `Generate schedule for group`, time: now() }])
-        const res = await fetch(`${BASE_URL}/api/groups/${groupId}/schedule`, {
+        const res = await fetch(`${API_BASE}/api/groups/${groupId}/schedule`, {
           method: 'POST', headers: hdrs, body: JSON.stringify({ user_confirmed: true }),
         })
         const data = await res.json()
@@ -541,7 +540,7 @@ export default function AiPage() {
       else if (actionType === 'announce') {
         const { content } = extra
         setMessages(prev => [...prev, { role: 'user', text: `Announcement: ${content}`, time: now() }])
-        const res = await fetch(`${BASE_URL}/api/announcements`, {
+        const res = await fetch(`${API_BASE}/api/announcements`, {
           method: 'POST', headers: hdrs,
           body: JSON.stringify({ content, user_confirmed: true }),
         })
@@ -621,6 +620,7 @@ export default function AiPage() {
     }
     const headers = {
       'Content-Type': 'application/json',
+      'ngrok-skip-browser-warning': 'true',
       ...(session ? { 'Authorization': `Bearer ${session.access_token}` } : {}),
     }
 
@@ -683,11 +683,6 @@ export default function AiPage() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <h1 style={{ fontSize: 24, fontWeight: 700, color: C.heading, margin: 0 }}>
               {t('ai_page_title', lang) || "AERIS AI"}
-              {modelInfo?.model && (
-                <span style={{ fontSize: 14, fontWeight: 400, color: C.subheading, marginLeft: 8 }}>
-                  ({modelInfo.model})
-                </span>
-              )}
             </h1>
             <StatusBadge
               status={healthStatus === 'ok' ? 'ok' : healthStatus === 'error' ? 'error' : 'checking'}
