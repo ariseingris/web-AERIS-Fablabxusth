@@ -64,7 +64,8 @@ function ExportOptionsModal({ format, deviceOptions, onClose, lang, C }) {
       const since = new Date(Date.now() - cfgRange * 60 * 60 * 1000).toISOString()
       const params = new URLSearchParams({ limit: '5000', from: since })
       const resp = await fetch(
-        `${API_URL}/api/iot/data/${encodeURIComponent(cfgDevice)}?${params}`
+        `${API_URL}/api/iot/data/${encodeURIComponent(cfgDevice)}?${params}`,
+        { headers: { 'ngrok-skip-browser-warning': 'true' } }
       )
       if (!resp.ok) throw new Error(`Server error ${resp.status}`)
       const { data: rawRows } = await resp.json()
@@ -73,7 +74,8 @@ function ExportOptionsModal({ format, deviceOptions, onClose, lang, C }) {
         // Probe without time filter to distinguish "no data ever" vs "not in range"
         const probeParams = new URLSearchParams({ limit: '1' })
         const probeResp = await fetch(
-          `${API_URL}/api/iot/data/${encodeURIComponent(cfgDevice)}?${probeParams}`
+          `${API_URL}/api/iot/data/${encodeURIComponent(cfgDevice)}?${probeParams}`,
+          { headers: { 'ngrok-skip-browser-warning': 'true' } }
         )
         const { data: probeRows } = await probeResp.json()
         if (!probeRows || probeRows.length === 0) {
@@ -452,7 +454,9 @@ export default function Dashboard() {
   useEffect(() => {
     if (!exportModal) return
     const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
-    fetch(`${API_URL}/api/iot/devices`)
+    fetch(`${API_URL}/api/iot/devices`, {
+      headers: { 'ngrok-skip-browser-warning': 'true' },
+    })
       .then(r => r.json())
       .then(({ devices }) => {
         const ids = (devices ?? []).map(d => d.device_id).filter(Boolean)

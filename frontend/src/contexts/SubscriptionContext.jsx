@@ -14,7 +14,10 @@ export function SubscriptionProvider({ children }) {
     if (!session) return
     try {
       const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/subscription/status`, {
-        headers: { 'Authorization': `Bearer ${session.access_token}` }
+        headers: {
+          'ngrok-skip-browser-warning': 'true',
+          'Authorization': `Bearer ${session.access_token}`,
+        }
       })
       if (res.ok) {
         const data = await res.json()
@@ -43,7 +46,10 @@ export function SubscriptionProvider({ children }) {
     try {
       const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/subscription/upgrade`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${session.access_token}` }
+        headers: {
+          'ngrok-skip-browser-warning': 'true',
+          'Authorization': `Bearer ${session.access_token}`,
+        }
       })
       if (res.ok) {
         await fetchStatus() // refresh

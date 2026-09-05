@@ -51,7 +51,8 @@ export default function useHistoricalData(deviceId, range) {
       const params = new URLSearchParams({ limit: '1500' });
       if (since) params.set('from', since);
       const resp = await fetch(
-        `${API_URL}/api/iot/data/${encodeURIComponent(deviceId)}?${params}`
+        `${API_URL}/api/iot/data/${encodeURIComponent(deviceId)}?${params}`,
+        { headers: { 'ngrok-skip-browser-warning': 'true' } }
       );
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const { data: rows } = await resp.json();

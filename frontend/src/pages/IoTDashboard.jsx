@@ -24,6 +24,11 @@ const SENSOR_ICONS = {
   voltage: '⚡', current: '🔌', ch4: '💨', default: '📊',
 }
 
+const RAW_UNIT_LABELS = {
+  temperature: '°C', humidity: '%', co2: 'ppm',
+  ch4: '%', pressure: 'hPa', light: 'lux',
+}
+
 // ─── Labels (vi / en) ────────────────────────────────────────────────────────
 const L = {
   title:         { vi: 'Trung tâm IoT',       en: 'IoT Control Center' },
@@ -54,6 +59,8 @@ const L = {
   controls:      { vi: 'Điều khiển',           en: 'Controls' },
   rawData:       { vi: 'Dữ liệu Raw',          en: 'Raw Data' },
   normalizedData:{ vi: 'Đã chuẩn hoá',         en: 'Normalized' },
+  unitFriendly:  { vi: 'Đơn vị thông thường',  en: 'Common units' },
+  unitAdc:       { vi: 'ADC (chuyên sâu)',     en: 'ADC (technical)' },
   // Add modal
   addTitle:      { vi: 'Thêm thiết bị IoT',   en: 'Add IoT Device' },
   deviceId:      { vi: 'Device ID',            en: 'Device ID' },
@@ -395,6 +402,7 @@ export default function IoTDashboard() {
   const [showAddModal, setShowAddModal] = useState(false)
   const [range,        setRange]        = useState('7d')
   const [displayMode, setDisplayMode] = useState('normalized')
+  const [rawUnitStyle, setRawUnitStyle] = useState('friendly')
 
   const handleToggleDisplayMode = useCallback((mode) => {
     setDisplayMode(mode)
@@ -642,7 +650,7 @@ export default function IoTDashboard() {
               </div>
 
               {/* Raw / Normalized toggle */}
-              <div style={{ display: 'flex', gap: 8 }}>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                 {['normalized', 'raw'].map(mode => (
                   <button key={mode} onClick={() => handleToggleDisplayMode(mode)} style={{
                     padding: '6px 14px', borderRadius: 6, fontSize: 12, cursor: 'pointer',
@@ -655,6 +663,22 @@ export default function IoTDashboard() {
                     {mode === 'raw' ? lv('rawData', lang) : lv('normalizedData', lang)}
                   </button>
                 ))}
+
+                {displayMode === 'raw' && (
+                  <div style={{ display: 'flex', gap: 6, marginLeft: 8, paddingLeft: 8, borderLeft: `1px solid ${C.cardBorder}` }}>
+                    {['friendly', 'adc'].map(style => (
+                      <button key={style} onClick={() => setRawUnitStyle(style)} style={{
+                        padding: '5px 10px', borderRadius: 6, fontSize: 11, cursor: 'pointer',
+                        border: `1px solid ${rawUnitStyle === style ? C.accent : C.cardBorder}`,
+                        background: rawUnitStyle === style ? C.accentBg : 'transparent',
+                        color: rawUnitStyle === style ? C.accent : C.faint,
+                        fontFamily: "'DM Mono', monospace",
+                      }}>
+                        {style === 'adc' ? lv('unitAdc', lang) : lv('unitFriendly', lang)}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Sensor Stat Cards — normalized OR raw */}
@@ -666,7 +690,10 @@ export default function IoTDashboard() {
                     <SensorCard
                       key={key}
                       sensorKey={key}
-                      data={{ value: selectedLatest[`${key}_raw`] ?? '—', unit: 'ADC' }}
+                      data={{
+                        value: selectedLatest[`${key}_raw`] ?? '—',
+                        unit: rawUnitStyle === 'adc' ? 'ADC' : RAW_UNIT_LABELS[key],
+                      }}
                       C={C}
                     />
                   ))}
