@@ -14,7 +14,7 @@ from flask_cors import CORS
 app = Flask(__name__)
 CORS(app, resources={r"/ai/*": {"origins": os.environ.get("ALLOWED_ORIGIN", "http://localhost:5173")}})
 
-MODEL = os.environ.get('OLLAMA_MODEL', 'qwen3.5:latest')  # Change to your model name if different
+MODEL = os.environ.get('OLLAMA_MODEL', 'qwen3-coder:30b')  # Change to your model name if different
 START_TIME = time.time()
 MODEL_LOADED_AT = None
 MODEL_STATUS = "loading"  # "ready" | "error"
@@ -359,4 +359,4 @@ def _startup_check():
 if __name__ == '__main__':
     _startup_check()
     debug_mode = os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'
-    app.run(host='0.0.0.0', port=5001, debug=debug_mode)
+    app.run(host='0.0.0.0', port=int(os.environ.get('AI_PORT', 5001)), debug=debug_mode)
