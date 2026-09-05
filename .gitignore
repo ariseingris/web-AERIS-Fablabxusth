@@ -28,6 +28,7 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+*.log
 
 # Build output
 dist/
@@ -44,3 +45,9 @@ Thumbs.db
 *.suo
 *.sw?
 .vercel
+
+#claude
+CLAUDE.local.md
+.claude/
+CLAUDE.md
+.claude/settings.local.json

@@ -14,7 +14,7 @@ from flask_cors import CORS
 app = Flask(__name__)
 CORS(app, resources={r"/ai/*": {"origins": os.environ.get("ALLOWED_ORIGIN", "http://localhost:5173")}})
 
-MODEL = os.environ.get('OLLAMA_MODEL', 'qwen2.5:3b')  # Change to your model name if different
+MODEL = os.environ.get('OLLAMA_MODEL', 'qwen3.5:latest')  # Change to your model name if different
 START_TIME = time.time()
 MODEL_LOADED_AT = None
 MODEL_STATUS = "loading"  # "ready" | "error"
@@ -49,6 +49,18 @@ CONTROL_SYSTEM = (
     "Bạn có thể bật/tắt đèn, quạt và các thiết bị trong nhà bằng công cụ control_iot_device. "
     "Hãy thực thi lệnh chính xác và báo cáo kết quả rõ ràng cho người dùng."
 )
+
+# ── Canned responses (demo / video) ──────────────────────────────────────────
+# Keys are lowercase + stripped trigger phrases.
+# Add more entries here to extend without touching any other code.
+CANNED_RESPONSES: dict[str, str] = {
+    "nồng độ co2 trong 5 ngày gần nhất như thế nào?": (
+        "Trong 5 ngày gần nhất, nồng độ CO2 dao động trong khoảng 420\u2013460 ppm, "
+        "với xu hướng giảm nhẹ vào 2 ngày cuối. "
+        "Mức cao nhất ghi nhận là 458 ppm (ngày 27/7), thấp nhất là 421 ppm (ngày 30/7). "
+        "Dữ liệu nằm trong ngưỡng an toàn, chưa có dấu hiệu bất thường."
+    ),
+}
 
 # ── IoT tool definition for ollama ────────────────────────────────────────────
 IOT_TOOL = {
@@ -123,7 +135,7 @@ def chat_ollama(history: list, use_tools: bool) -> str:
     Send history to ollama, handle tool calls if any, and return the final text reply.
     Mutates `history` in place by appending assistant + tool messages.
     """
-    kwargs = {'model': MODEL, 'messages': history}
+    kwargs = {'model': MODEL, 'messages': history, 'think': False}
     if use_tools:
         kwargs['tools'] = [IOT_TOOL]
 
@@ -145,7 +157,7 @@ def chat_ollama(history: list, use_tools: bool) -> str:
             args = tc.function.arguments or {}
             result = control_iot_device(**args)
             history.append({'role': 'tool', 'content': json.dumps(result, ensure_ascii=False)})
-        follow = ollama.chat(model=MODEL, messages=history)
+        follow = ollama.chat(model=MODEL, messages=history, think=False)
         final_msg = follow.message
         history.append({'role': 'assistant', 'content': final_msg.content or ''})
         return final_msg.content or ''
@@ -181,6 +193,14 @@ def chat_with_agent():
     if mode == 'control' and not control_granted:
         return jsonify({'error': 'Quyền điều khiển chưa được cấp. Vui lòng xác nhận trong giao diện.'}), 403
 
+    # ── Canned-response shortcut (instant, no Ollama call) ───────────────────
+    normalized_msg = user_msg.lower().strip()
+    if normalized_msg in CANNED_RESPONSES:
+        canned_reply = CANNED_RESPONSES[normalized_msg]
+        print(f'[CANNED] trigger matched: "{normalized_msg}"')
+        return jsonify({'reply': canned_reply})
+    # ─────────────────────────────────────────────────────────────────────────
+
     history = get_history(session_id, mode)
     history.append({'role': 'user', 'content': user_msg})
 
@@ -213,7 +233,7 @@ def ai_research():
             'Perform research and provide information about the following topic, '
             f'focusing on plants/crops if applicable:\n{query}'
         )
-        response = ollama.chat(model=MODEL, messages=[{'role': 'user', 'content': prompt}])
+        response = ollama.chat(model=MODEL, messages=[{'role': 'user', 'content': prompt}], think=False)
         return jsonify({'result': response.message.content})
     except Exception as e:
         print(f'[ERROR] ollama research failed: {e}')
@@ -239,7 +259,7 @@ def ai_predict():
             'Analyze crop health and weather conditions based on simulated IoT data '
             'and provide a prediction for the next 7 days.'
         )
-        response = ollama.chat(model=MODEL, messages=[{'role': 'user', 'content': prompt}])
+        response = ollama.chat(model=MODEL, messages=[{'role': 'user', 'content': prompt}], think=False)
         return jsonify({'prediction': response.message.content})
     except Exception as e:
         print(f'[ERROR] ollama predict failed: {e}')
@@ -263,7 +283,7 @@ def ai_report():
 
     try:
         prompt = f'Generate a comprehensive agricultural report based on recent system data. Format: {fmt}'
-        response = ollama.chat(model=MODEL, messages=[{'role': 'user', 'content': prompt}])
+        response = ollama.chat(model=MODEL, messages=[{'role': 'user', 'content': prompt}], think=False)
         return jsonify({'report': response.message.content, 'format': fmt})
     except Exception as e:
         print(f'[ERROR] ollama report failed: {e}')
@@ -289,7 +309,7 @@ def ai_moderate():
             "Evaluate the following text and classify it as exactly one of these labels: "
             "'safe', 'uncertain', or 'harmful'. Return only the label.\n\nText: " + text
         )
-        response = ollama.chat(model=MODEL, messages=[{'role': 'user', 'content': prompt}])
+        response = ollama.chat(model=MODEL, messages=[{'role': 'user', 'content': prompt}], think=False)
         label = response.message.content.strip().lower()
         if label not in ('safe', 'uncertain', 'harmful'):
             label = 'uncertain'
@@ -326,11 +346,11 @@ def model_info():
 def _startup_check():
     global MODEL_STATUS, MODEL_LOADED_AT
     try:
-        resp = ollama.chat(model=MODEL, messages=[{'role': 'user', 'content': 'ping'}])
+        resp = ollama.chat(model=MODEL, messages=[{'role': 'user', 'content': 'ping'}], think=False)
         _ = resp.message.content  # force evaluation
         MODEL_STATUS = 'ready'
         MODEL_LOADED_AT = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
-        print(f'[AI] Qwen2.5:3b ready at {MODEL_LOADED_AT}')
+        print(f'[AI] {MODEL} ready at {MODEL_LOADED_AT}')
     except Exception as e:
         MODEL_STATUS = 'error'
         print(f'[AI] Startup check FAILED: {e}')
