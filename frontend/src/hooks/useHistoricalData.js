@@ -30,6 +30,12 @@ function normalizeRow(row) {
     ch4:         row.ch4         ?? null,
     pressure:    row.pressure    ?? null,
     light:       row.light       ?? null,
+    temperature_raw: row.temperature_raw ?? null,
+    humidity_raw:    row.humidity_raw    ?? null,
+    co2_raw:         row.co2_raw         ?? null,
+    ch4_raw:         row.ch4_raw         ?? null,
+    pressure_raw:    row.pressure_raw    ?? null,
+    light_raw:       row.light_raw       ?? null,
     soil:        row.soil        ?? null,
   };
 }

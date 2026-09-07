@@ -731,7 +731,7 @@ export default function IoTDashboard() {
 
               {/* Multi-metric Chart */}
               <MultiChart
-                data={displayMode === 'raw' ? selectedHistory : historyData}
+                data={historyData}
                 metrics={['temperature', 'humidity', 'co2', 'ch4', 'pressure', 'light']}
                 mode={displayMode}
               />
