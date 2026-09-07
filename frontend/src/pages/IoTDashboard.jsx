@@ -701,36 +701,39 @@ export default function IoTDashboard() {
               )}
 
               {/* Range picker + loading hint */}
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
-                padding: '6px 2px',
-              }}>
-                {['1h', '6h', '24h', '7d', '30d', '90d'].map(r => {
-                  const active = r === range
-                  return (
-                    <button key={r} onClick={() => setRange(r)} style={{
-                      padding: '5px 12px', borderRadius: 6, fontSize: 12,
-                      fontFamily: "'DM Mono', monospace", cursor: 'pointer',
-                      border: `1px solid ${active ? C.accent : C.cardBorder}`,
-                      background: active ? C.accentBg : 'transparent',
-                      color: active ? C.accent : C.faint,
-                      fontWeight: active ? 600 : 400,
-                      transition: 'all 0.15s',
-                    }}>{r}</button>
-                  )
-                })}
-                {historyLoading && (
-                  <span style={{
-                    fontSize: 11, color: C.faint,
-                    fontFamily: "'DM Mono', monospace", marginLeft: 4,
-                  }}>Loading…</span>
-                )}
-              </div>
+              {displayMode === 'normalized' && (
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+                  padding: '6px 2px',
+                }}>
+                  {['1h', '6h', '24h', '7d', '30d', '90d'].map(r => {
+                    const active = r === range
+                    return (
+                      <button key={r} onClick={() => setRange(r)} style={{
+                        padding: '5px 12px', borderRadius: 6, fontSize: 12,
+                        fontFamily: "'DM Mono', monospace", cursor: 'pointer',
+                        border: `1px solid ${active ? C.accent : C.cardBorder}`,
+                        background: active ? C.accentBg : 'transparent',
+                        color: active ? C.accent : C.faint,
+                        fontWeight: active ? 600 : 400,
+                        transition: 'all 0.15s',
+                      }}>{r}</button>
+                    )
+                  })}
+                  {historyLoading && (
+                    <span style={{
+                      fontSize: 11, color: C.faint,
+                      fontFamily: "'DM Mono', monospace", marginLeft: 4,
+                    }}>Loading…</span>
+                  )}
+                </div>
+              )}
 
               {/* Multi-metric Chart */}
               <MultiChart
-                data={historyData}
+                data={displayMode === 'raw' ? selectedHistory : historyData}
                 metrics={['temperature', 'humidity', 'co2', 'ch4', 'pressure', 'light']}
+                mode={displayMode}
               />
 
               {/* Report Exporter */}

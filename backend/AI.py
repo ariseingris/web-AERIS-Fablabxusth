@@ -2,6 +2,7 @@ import os
 import re
 import time
 import json
+import random
 from collections import defaultdict
 from threading import Lock
 from dotenv import load_dotenv
@@ -60,7 +61,21 @@ CANNED_RESPONSES: dict[str, str] = {
         "Mức cao nhất ghi nhận là 458 ppm (ngày 27/7), thấp nhất là 421 ppm (ngày 30/7). "
         "Dữ liệu nằm trong ngưỡng an toàn, chưa có dấu hiệu bất thường."
     ),
+    # TODO: khi RAG được tích hợp, xoá entry này khỏi CANNED_RESPONSES —
+    # câu hỏi sẽ được trả lời bằng retrieval thật thay vì canned text.
+    "aeris của sv-startup là gì?": (
+        "AERIS là nền tảng IoT giám sát vi khí hậu nông trại và phát thải khí nhà kính "
+        "theo thời gian thực, giúp giải quyết bài toán thiếu dữ liệu thực địa buộc phải "
+        "dùng hệ số phát thải mặc định Tier 1 theo CBAM/EUDR. Hệ thống dùng buồng đo tự động "
+        "kết hợp thuật toán lọc nhiễu để giảm sai số cảm biến, đồng bộ dữ liệu lên cloud phục vụ "
+        "báo cáo MRV và xây dựng hệ số phát thải Tier 2 quốc gia. Mô hình kinh doanh kết hợp "
+        "phần cứng và dịch vụ dữ liệu định kỳ, hướng tới thị trường tín chỉ carbon nông nghiệp."
+    ),
 }
+
+# Simulated "thinking" delay for canned responses, so demo videos look like a
+# real model call instead of an instant hardcoded reply.
+CANNED_RESPONSE_DELAY_RANGE = (1.0, 2.0)
 
 # ── IoT tool definition for ollama ────────────────────────────────────────────
 IOT_TOOL = {
@@ -198,6 +213,7 @@ def chat_with_agent():
     if normalized_msg in CANNED_RESPONSES:
         canned_reply = CANNED_RESPONSES[normalized_msg]
         print(f'[CANNED] trigger matched: "{normalized_msg}"')
+        time.sleep(random.uniform(*CANNED_RESPONSE_DELAY_RANGE))  # simulate model latency for demo
         return jsonify({'reply': canned_reply})
     # ─────────────────────────────────────────────────────────────────────────
 

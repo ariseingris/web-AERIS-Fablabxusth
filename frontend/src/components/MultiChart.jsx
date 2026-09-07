@@ -36,15 +36,18 @@ const TIME_RANGES = [
 ]
 
 const L = {
-  chartTitle:  { vi: 'Biểu đồ cảm biến', en: 'Sensor Chart' },
-  noData:      { vi: 'Chưa có dữ liệu', en: 'No data yet' },
-  timeRange:   { vi: 'Khoảng thời gian', en: 'Time Range' },
-  toggleAll:   { vi: 'Tất cả',           en: 'All' },
+  chartTitle:    { vi: 'Biểu đồ cảm biến (đã chuẩn hoá)', en: 'Sensor Chart (Normalized)' },
+  chartTitleRaw: { vi: 'Biểu đồ dữ liệu Raw (ADC thô)',   en: 'Raw Data Chart (ADC)' },
+  rawBanner:     { vi: '⚠️ Dữ liệu thô chưa hiệu chuẩn — thể hiện đúng nhiễu/sai số thực tế của cảm biến',
+                  en: "⚠️ Uncalibrated raw data — shows the sensor's real noise/error" },
+  noData:        { vi: 'Chưa có dữ liệu', en: 'No data yet' },
+  timeRange:     { vi: 'Khoảng thời gian', en: 'Time Range' },
+  toggleAll:     { vi: 'Tất cả',           en: 'All' },
 }
 const lv = (key, lang) => L[key]?.[lang] ?? L[key]?.en ?? key
 
 // ─── Custom Tooltip ───────────────────────────────────────────────────────────
-function ChartTooltip({ active, payload, label, lang, C }) {
+function ChartTooltip({ active, payload, label, lang, C, isRaw }) {
   if (!active || !payload?.length) return null
   return (
     <div style={{
@@ -64,7 +67,8 @@ function ChartTooltip({ active, payload, label, lang, C }) {
         })}
       </div>
       {payload.map(entry => {
-        const cfg = METRIC_CONFIG[entry.dataKey]
+        const baseKey = isRaw ? entry.dataKey.replace(/_raw$/, '') : entry.dataKey
+        const cfg = METRIC_CONFIG[baseKey]
         return (
           <div key={entry.dataKey} style={{
             display: 'flex', alignItems: 'center', gap: 8,
@@ -78,9 +82,9 @@ function ChartTooltip({ active, payload, label, lang, C }) {
               {cfg?.label?.[lang] ?? entry.dataKey}
             </span>
             <span style={{ color: C.heading, fontWeight: 600, fontFamily: "'DM Mono', monospace" }}>
-              {typeof entry.value === 'number' ? entry.value.toFixed(1) : entry.value}
+              {typeof entry.value === 'number' ? entry.value.toFixed(isRaw ? 0 : 1) : entry.value}
             </span>
-            <span style={{ color: C.faint, fontSize: 10 }}>{cfg?.unit ?? ''}</span>
+            <span style={{ color: C.faint, fontSize: 10 }}>{isRaw ? 'ADC' : (cfg?.unit ?? '')}</span>
           </div>
         )
       })}
@@ -89,9 +93,11 @@ function ChartTooltip({ active, payload, label, lang, C }) {
 }
 
 // ─── MultiChart Component ─────────────────────────────────────────────────────
-export default function MultiChart({ data = [], metrics = [] }) {
+export default function MultiChart({ data = [], metrics = [], mode = 'normalized' }) {
   const C = useColors()
   const { lang } = useLang()
+  const isRaw = mode === 'raw'
+  const dataKeyFor = (key) => isRaw ? `${key}_raw` : key
 
   // Resolve which metrics to use
   const activeMetrics = metrics.length > 0 ? metrics : Object.keys(METRIC_CONFIG)
@@ -149,30 +155,32 @@ export default function MultiChart({ data = [], metrics = [] }) {
           margin: 0, fontSize: 16, fontWeight: 600, color: C.heading,
           display: 'flex', alignItems: 'center', gap: 8,
         }}>
-          <span style={{ fontSize: 18 }}>📈</span>
-          {lv('chartTitle', lang)}
+          <span style={{ fontSize: 18 }}>{isRaw ? '🔬' : '📈'}</span>
+          {lv(isRaw ? 'chartTitleRaw' : 'chartTitle', lang)}
         </h3>
 
         {/* Time range pills */}
-        <div style={{ display: 'flex', gap: 4 }}>
-          {TIME_RANGES.map(r => (
-            <button
-              key={r.key}
-              onClick={() => setRange(r.key)}
-              style={{
-                padding: '4px 10px', borderRadius: 6, fontSize: 11,
-                fontFamily: "'DM Mono', monospace", cursor: 'pointer',
-                border: `1px solid ${range === r.key ? C.accent : C.cardBorder}`,
-                background: range === r.key ? C.accentBg : 'transparent',
-                color: range === r.key ? C.accent : C.faint,
-                transition: 'all 0.15s',
-                fontWeight: range === r.key ? 600 : 400,
-              }}
-            >
-              {r.label}
-            </button>
-          ))}
-        </div>
+        {!isRaw && (
+          <div style={{ display: 'flex', gap: 4 }}>
+            {TIME_RANGES.map(r => (
+              <button
+                key={r.key}
+                onClick={() => setRange(r.key)}
+                style={{
+                  padding: '4px 10px', borderRadius: 6, fontSize: 11,
+                  fontFamily: "'DM Mono', monospace", cursor: 'pointer',
+                  border: `1px solid ${range === r.key ? C.accent : C.cardBorder}`,
+                  background: range === r.key ? C.accentBg : 'transparent',
+                  color: range === r.key ? C.accent : C.faint,
+                  transition: 'all 0.15s',
+                  fontWeight: range === r.key ? 600 : 400,
+                }}
+              >
+                {r.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* ── Metric toggle chips ── */}
@@ -220,6 +228,15 @@ export default function MultiChart({ data = [], metrics = [] }) {
         })}
       </div>
 
+      {isRaw && (
+        <div style={{
+          fontSize: 11.5, color: '#f59e0b', background: '#f59e0b15',
+          border: '1px solid #f59e0b40', borderRadius: 8, padding: '6px 10px',
+        }}>
+          {lv('rawBanner', lang)}
+        </div>
+      )}
+
       {/* ── Chart ── */}
       {filteredData.length === 0 ? (
         <div style={{
@@ -262,7 +279,7 @@ export default function MultiChart({ data = [], metrics = [] }) {
                 width={40}
               />
               <Tooltip
-                content={<ChartTooltip lang={lang} C={C} />}
+                content={<ChartTooltip lang={lang} C={C} isRaw={isRaw} />}
                 cursor={{ stroke: C.accent, strokeWidth: 1, strokeDasharray: '4 4' }}
               />
               {activeMetrics.map(key => {
@@ -271,13 +288,14 @@ export default function MultiChart({ data = [], metrics = [] }) {
                 return (
                   <Line
                     key={key}
-                    type="monotone"
-                    dataKey={key}
+                    type={isRaw ? 'linear' : 'monotone'}
+                    dataKey={dataKeyFor(key)}
                     stroke={cfg.color}
-                    strokeWidth={2}
+                    strokeWidth={isRaw ? 1.25 : 2}
+                    strokeDasharray={isRaw ? '2 3' : undefined}
                     dot={false}
                     activeDot={{ r: 4, fill: cfg.color, stroke: C.cardBg, strokeWidth: 2 }}
-                    animationDuration={800}
+                    animationDuration={isRaw ? 300 : 800}
                     connectNulls
                   />
                 )

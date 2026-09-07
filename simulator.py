@@ -2,7 +2,7 @@ import paho.mqtt.client as mqtt
 import json, time, random, ssl
 from datetime import datetime, timezone
 
-DEVICE_ID = "stm32_mq2"
+DEVICE_ID = "aeris_pod"
 
 HOST = "9df9b7f54e0b41cdb8afd8fab379c0a3.s1.eu.hivemq.cloud"
 PORT = 8883
