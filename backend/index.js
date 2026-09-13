@@ -263,7 +263,7 @@ app.get('/api/iot/data/:deviceId', async (req, res) => {
       .from('sensor_data')
       .select('*')
       .eq('device_id', deviceId)
-      .order('timestamp', { ascending: true });
+      .order('timestamp', { ascending: false });
 
     if (from) query = query.gte('timestamp', from);
     if (to) query = query.lte('timestamp', to);
@@ -271,7 +271,7 @@ app.get('/api/iot/data/:deviceId', async (req, res) => {
 
     const { data, error } = await query;
     if (error) return res.status(500).json({ error: error.message });
-    res.json({ data });
+    res.json({ data: (data || []).reverse() });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
