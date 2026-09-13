@@ -642,6 +642,7 @@ export default function Dashboard() {
               return (
                 <button key={label}
                   onClick={() => {
+                    if (label === t('dash_qa_task', lang))   navigate('/dashboard/groups')
                     if (label === t('dash_qa_invite', lang)) navigate('/dashboard/groups')
                     if (label === t('dash_qa_ai', lang))     navigate('/dashboard/ai')
                   }}

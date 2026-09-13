@@ -431,16 +431,21 @@ function ProgressTab({ groupId, C, lang }) {
   const [newDue, setNewDue] = useState('')
   const [adding, setAdding] = useState(false)
   const [draggedId, setDraggedId] = useState(null)
+  const [taskError, setTaskError] = useState('')
 
   const fetchTasks = useCallback(async () => {
     try {
-      const { data } = await supabase
-        .from('group_tasks')
+      const { data, error } = await supabase
+        .from('group_progress')
         .select('*')
         .eq('group_id', groupId)
         .order('created_at', { ascending: true })
+      if (error) throw error
+      setTaskError('')
       setTasks(data ?? [])
-    } catch { /* ignore */ }
+    } catch (error) {
+      setTaskError(error.message || 'Unable to load tasks')
+    }
   }, [groupId])
 
   useEffect(() => { fetchTasks() }, [fetchTasks])
@@ -450,24 +455,31 @@ function ProgressTab({ groupId, C, lang }) {
     setAdding(true)
     try {
       const { data: { user } } = await supabase.auth.getUser()
-      await supabase
-        .from('group_tasks')
+      if (!user) throw new Error('You must be signed in to add a task')
+      const { error } = await supabase
+        .from('group_progress')
         .insert({ group_id: groupId, title: newTitle.trim(), due_date: newDue || null, status: 'todo', assigned_to: user.id })
+      if (error) throw error
       setNewTitle('')
       setNewDue('')
-      fetchTasks()
-    } catch { /* ignore */ }
+      await fetchTasks()
+    } catch (error) {
+      setTaskError(error.message || 'Unable to add task')
+    }
     setAdding(false)
   }
 
   const moveTask = async (taskId, newStatus) => {
     try {
-      await supabase
-        .from('group_tasks')
+      const { error } = await supabase
+        .from('group_progress')
         .update({ status: newStatus })
         .eq('id', taskId)
-      fetchTasks()
-    } catch { /* ignore */ }
+      if (error) throw error
+      await fetchTasks()
+    } catch (error) {
+      setTaskError(error.message || 'Unable to update task')
+    }
   }
 
   const columns = [
@@ -522,6 +534,11 @@ function ProgressTab({ groupId, C, lang }) {
           + {t('grp_add_task', lang)}
         </button>
       </div>
+      {taskError && (
+        <div style={{ color: '#fca5a5', fontSize: 12 }} role="alert">
+          {taskError}
+        </div>
+      )}
 
       {/* Kanban board */}
       <div style={{
