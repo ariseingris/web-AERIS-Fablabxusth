@@ -18,9 +18,10 @@ import AiPage from './pages/AiPage'
 import UpdatePage from './pages/UpdatePage'
 import SettingsPage from './pages/SettingsPage'
 import HelpPage from './pages/HelpPage'
-import CommunityPage from './pages/CommunityPage'   // ← NEW
+import CommunityPage from './pages/CommunityPage'
 import AdminPage from './pages/AdminPage'
 import AdminRoute from './components/AdminRoute'
+import NotFound from './pages/NotFound'
 import { SubscriptionProvider } from './contexts/SubscriptionContext'
 import UpsellModal from './components/UpsellModal'
 import { useLang } from './contexts/LangContext'
@@ -131,46 +132,46 @@ export default function App() {
         }}
       />
       <Router>
-      <Routes>
+        <Routes>
 
-        {/* ── PUBLIC ── */}
-        <Route path="/" element={<Landing />} />
-        <Route
-          path="/login"
-          element={session ? <Navigate to="/dashboard" /> : <Login />}
-        />
+          {/* ── PUBLIC ── */}
+          <Route path="/" element={<Landing />} />
+          <Route
+            path="/login"
+            element={session ? <Navigate to="/dashboard" /> : <Login />}
+          />
 
-        {/* ── DASHBOARD (protected, with sidebar) ── */}
-        <Route
-          path="/dashboard"
-          element={
-            <ProtectedRoute session={session}>
-              <MainLayout session={session} handleLogout={handleLogout} />
-            </ProtectedRoute>
-          }
-        >
-          <Route index                element={<ErrorBoundary><Dashboard /></ErrorBoundary>} />
-          <Route path="ai"            element={<ErrorBoundary><AiPage /></ErrorBoundary>} />
-          <Route path="update"        element={<ErrorBoundary><UpdatePage /></ErrorBoundary>} />
-          <Route path="settings"      element={<ErrorBoundary><SettingsPage /></ErrorBoundary>} />
-          <Route path="help"          element={<ErrorBoundary><HelpPage /></ErrorBoundary>} />
-          <Route path="iot"           element={<ErrorBoundary><IoTDashboard /></ErrorBoundary>} />
-          <Route path="community"     element={<ErrorBoundary><CommunityPage /></ErrorBoundary>} />
-          <Route path="groups"        element={<ErrorBoundary><GroupPage /></ErrorBoundary>} />
-          <Route path="groups/:id"    element={<ErrorBoundary><GroupPage /></ErrorBoundary>} />
-          <Route path="products"      element={<ErrorBoundary><ProductsPage /></ErrorBoundary>} />
-          <Route path="admin"         element={
-            <AdminRoute>
-              <ErrorBoundary><AdminPage /></ErrorBoundary>
-            </AdminRoute>
-          } />
-        </Route>
+          {/* ── DASHBOARD (protected, with sidebar) ── */}
+          <Route
+            path="/dashboard"
+            element={
+              <ProtectedRoute session={session}>
+                <MainLayout session={session} handleLogout={handleLogout} />
+              </ProtectedRoute>
+            }
+          >
+            <Route index                element={<ErrorBoundary><Dashboard /></ErrorBoundary>} />
+            <Route path="ai"            element={<ErrorBoundary><AiPage /></ErrorBoundary>} />
+            <Route path="update"        element={<ErrorBoundary><UpdatePage /></ErrorBoundary>} />
+            <Route path="settings"      element={<ErrorBoundary><SettingsPage /></ErrorBoundary>} />
+            <Route path="help"          element={<ErrorBoundary><HelpPage /></ErrorBoundary>} />
+            <Route path="iot"           element={<ErrorBoundary><IoTDashboard /></ErrorBoundary>} />
+            <Route path="community"     element={<ErrorBoundary><CommunityPage /></ErrorBoundary>} />
+            <Route path="groups"        element={<ErrorBoundary><GroupPage /></ErrorBoundary>} />
+            <Route path="groups/:id"    element={<ErrorBoundary><GroupPage /></ErrorBoundary>} />
+            <Route path="products"      element={<ErrorBoundary><ProductsPage /></ErrorBoundary>} />
+            <Route path="admin"         element={
+              <AdminRoute>
+                <ErrorBoundary><AdminPage /></ErrorBoundary>
+              </AdminRoute>
+            } />
+          </Route>
 
-        {/* ── FALLBACK ── */}
-        <Route path="*" element={<Navigate to="/" />} />
+          {/* ── CUSTOM 404 ── */}
+          <Route path="*" element={<NotFound />} />
 
-      </Routes>
-    </Router>
+        </Routes>
+      </Router>
     </SubscriptionProvider>
   )
 }
