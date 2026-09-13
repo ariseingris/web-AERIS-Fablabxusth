@@ -19,24 +19,6 @@ function timeAgo(ts, lang = 'vi') {
   return new Date(ts).toLocaleDateString(lang === 'vi' ? 'vi-VN' : 'en-US')
 }
 
-function initials(email = '') {
-  const name = email.split('@')[0]
-  const parts = name.split(/[._-]/)
-  return parts.length >= 2
-    ? (parts[0][0] + parts[1][0]).toUpperCase()
-    : name.slice(0, 2).toUpperCase()
-}
-
-const AVATAR_COLORS = [
-  '#0ea5e9','#10b981','#f59e0b','#8b5cf6','#ec4899',
-  '#14b8a6','#f97316','#6366f1','#84cc16','#ef4444',
-]
-function avatarColor(str = '') {
-  let h = 0
-  for (let i = 0; i < str.length; i++) h = str.charCodeAt(i) + ((h << 5) - h)
-  return AVATAR_COLORS[Math.abs(h) % AVATAR_COLORS.length]
-}
-
 // ─── Icons ────────────────────────────────────────────────────────────────────
 const IcoSearch  = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
 const IcoPlus    = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -260,6 +242,13 @@ const CSS = `
 .cm-btn-ghost:hover { border-color: var(--cm-card-hover-border); color: var(--cm-text); }
 
 .cm-empty { text-align: center; padding: 48px 0; color: var(--cm-faint); font-size: 13.5px; }
+.cm-error-state { color: #fca5a5; }
+.cm-retry-btn {
+  margin-top: 12px; padding: 7px 14px; border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.45); color: var(--cm-text);
+  background: var(--cm-input-bg); font-size: 12px; cursor: pointer;
+}
+.cm-retry-btn:hover { border-color: rgba(255,255,255,0.75); }
 .cm-badge {
   min-width: 18px; height: 18px; border-radius: 9px;
   background: #10b981; color: #052e16; font-size: 10px; font-weight: 700;
@@ -328,9 +317,9 @@ export default function CommunityPage() {
       --cm-faint:            ${C.faint};
       --cm-placeholder:      ${C.veryFaint};
       --cm-card-bg:          ${C.cardBg};
-      --cm-card-border:      ${C.cardBorder};
+      --cm-card-border:      rgba(255,255,255,0.35);
       --cm-card-hover-bg:    ${C.cardBgHover};
-      --cm-card-hover-border:${C.cardBorderHover};
+      --cm-card-hover-border:rgba(255,255,255,0.65);
       --cm-input-bg:         ${C.inputBg};
       --cm-input-border:     ${C.inputBorder};
       --cm-modal-bg:         ${C.cardBg};
@@ -344,6 +333,7 @@ export default function CommunityPage() {
   const [posts, setPosts]             = useState([])
   const [authors, setAuthors]         = useState({})
   const [loading, setLoading]         = useState(true)
+  const [feedError, setFeedError]     = useState('')
   const [search, setSearch]           = useState('')
   const [selectedPost, setSelectedPost] = useState(null)
   const [myLikes, setMyLikes]         = useState(new Set())
@@ -363,6 +353,7 @@ export default function CommunityPage() {
 
   const fetchPosts = useCallback(async () => {
     setLoading(true)
+    setFeedError('')
     const s = (await supabase.auth.getSession()).data?.session
     const userId = s?.user?.id
 
@@ -392,7 +383,8 @@ export default function CommunityPage() {
     if (currentTab === 'Latest' || currentTab === 'Following') {
       let query = supabase.from('community_posts').select('*, community_comments(count)').order('created_at', { ascending: false })
       if (!isAdmin) query = query.in('status', ['published', 'flagged'])
-      const { data } = await query
+      const { data, error } = await query
+      if (error) throw error
       const merged = await mergeOwnHidden(data || [])
       merged.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
       const authorsMap = await fetchAuthors(merged)
@@ -419,12 +411,13 @@ export default function CommunityPage() {
         setAuthors(authorsMap)
         setPosts(merged)
       } else {
-        setAuthors({})
-        setPosts([])
+        const data = await resp.json().catch(() => ({}))
+        throw new Error(data.error || `Unable to load posts (${resp.status})`)
       }
     } catch(e) {
       setAuthors({})
       setPosts([])
+      setFeedError(e.message || 'Unable to load posts')
     }
     setLoading(false)
   }, [currentTab, isAdmin])
@@ -468,7 +461,9 @@ export default function CommunityPage() {
             },
             body: JSON.stringify({ postId, type })
         })
-    } catch(e) {}
+    } catch {
+      return
+    }
   }
 
   const handleLike = async (e, post) => {
@@ -583,6 +578,11 @@ export default function CommunityPage() {
             <div style={{ flex: 1, minWidth: 0 }}>
                 {loading ? (
                   [1, 2, 3].map(i => <SkeletonCard key={i} />)
+                ) : feedError ? (
+                  <div className="cm-empty cm-error-state">
+                    <div>{feedError}</div>
+                    <button className="cm-retry-btn" onClick={fetchPosts}>Try again</button>
+                  </div>
                 ) : filteredPosts.length === 0 ? (
                   <div className="cm-empty">
                     {search ? t('comm_no_results', lang) : t('comm_empty', lang)}
@@ -603,7 +603,7 @@ export default function CommunityPage() {
                 )}
             </div>
             
-            <CommunitySidebar C={C} lang={lang} />
+            <CommunitySidebar C={C} />
         </div>
       </div>
 
@@ -619,7 +619,7 @@ export default function CommunityPage() {
   )
 }
 
-function CommunitySidebar({ C, lang }) {
+function CommunitySidebar({ C }) {
     return (
         <div style={{ width: 260, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 20 }}>
             {/* Popular Topics */}
@@ -784,9 +784,6 @@ function ThreadView({ post, author, session, liked, onLike, handleInteract, lang
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [comments.length])
 
-  const email   = session?.user?.email || ''
-  const inits   = initials(email)
-  const bgColor = avatarColor(session?.user?.id || email)
   const commentCount = comments.length
 
   const authorName = author?.full_name
@@ -1013,22 +1010,17 @@ function CreateModal({ session, onClose, onCreated, lang = 'vi' }) {
 
       const tagsArray = allTags
 
-      const { data: post, error: insertErr } = await supabase
-        .from('community_posts')
-        .insert({
-          author_id: user.id,
-          user_id:   user.id,
-          title:     title.trim(),
-          body:      body.trim(),
-          tags:      tagsArray,
-          likes:     0,
-          approved:  false,
-        })
-        .select()
-        .single()
-
-      if (insertErr) { setErr(insertErr.message); setSaving(false); return }
-      onCreated(post)
+      const response = await fetch(`${API_URL}/api/posts`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ title: title.trim(), content: body.trim(), tags: tagsArray }),
+      })
+      const result = await response.json().catch(() => ({}))
+      if (!response.ok) { setErr(result.error || 'Unable to publish post'); setSaving(false); return }
+      onCreated(result.post)
     } catch (e) {
       setErr(e.message || 'Network error')
       setSaving(false)

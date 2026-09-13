@@ -8,7 +8,7 @@ const DARK = {
   pageBg: 'transparent',
   titleColor: '#f1f5f9',
   cardBg: '#1e293b',
-  cardBorder: 'rgba(100,116,139,0.3)',
+  cardBorder: 'rgba(255,255,255,0.45)',
   nameColor: '#f1f5f9',
   descColor: '#94a3b8',
   emptyColor: '#64748b',
@@ -24,14 +24,13 @@ const LIGHT = {
   emptyColor: '#94a3b8',
 }
 
-function ProductCard({ product, C, lang }) {
-  const [expanded, setExpanded] = useState(false)
+function ProductCard({ product, C, lang, expanded, onToggle }) {
 
   const getName = (p) => (lang === 'vi' && p.name_vi) ? p.name_vi : p.name
   const getDesc = (p) => (lang === 'vi' && p.description_vi) ? p.description_vi : p.description
 
   const displayDescription = getDesc(product)
-  const plainText = displayDescription ? displayDescription.replace(/[#*_`>\-]/g, '').trim() : ''
+  const plainText = displayDescription ? displayDescription.replace(/[#*_`>-]/g, '').trim() : ''
   const isLong = plainText.length > 120
   const preview = isLong && !expanded ? plainText.slice(0, 120) + '...' : null
 
@@ -51,7 +50,7 @@ function ProductCard({ product, C, lang }) {
         <img
           src={product.image_url || 'https://placehold.co/400x200?text=No+Image'}
           alt={getName(product)}
-          style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+          style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'contain', background: '#f8fafc' }}
           onError={(e) => { e.currentTarget.src = 'https://placehold.co/400x200?text=No+Image' }}
         />
       </div>
@@ -70,7 +69,7 @@ function ProductCard({ product, C, lang }) {
             </div>
             {isLong && (
               <button
-                onClick={() => setExpanded(!expanded)}
+                onClick={onToggle}
                 style={{
                   background: 'none', border: 'none', cursor: 'pointer',
                   color: '#10b981', fontSize: 12, padding: '4px 0', fontWeight: 600,
@@ -107,6 +106,7 @@ export default function ProductsPage() {
   const C = effectiveTheme === 'light' ? LIGHT : DARK
 
   const [products, setProducts] = useState([])
+  const [expandedProductId, setExpandedProductId] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
@@ -161,7 +161,14 @@ export default function ProductsPage() {
           justifyContent: 'start',
         }}>
           {products.map((p) => (
-            <ProductCard key={p.id} product={p} C={C} lang={lang} />
+            <ProductCard
+              key={p.id}
+              product={p}
+              C={C}
+              lang={lang}
+              expanded={expandedProductId === p.id}
+              onToggle={() => setExpandedProductId(current => current === p.id ? null : p.id)}
+            />
           ))}
         </div>
       )}
