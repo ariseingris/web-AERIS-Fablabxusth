@@ -1,3 +1,5 @@
+const { persistNormalizedSensorRecord } = require('./normalizedSensorService');
+
 const RAW_SENSOR_FIELD_MAP = [
   ['temperature_raw', 'temp'],
   ['humidity_raw', 'hum'],
@@ -190,6 +192,13 @@ async function ingestRawSensorEvent({
         .single();
 
       if (error) throw new Error(error.message);
+
+      try {
+        await persistNormalizedSensorRecord({ rawRecord: data || duplicateRecord, supabase });
+      } catch (normalizeError) {
+        console.warn('⚠️  Failed to normalize duplicate raw sensor record:', normalizeError.message);
+      }
+
       return data || duplicateRecord;
     }
   }
@@ -202,6 +211,12 @@ async function ingestRawSensorEvent({
 
   if (error) {
     throw new Error(error.message);
+  }
+
+  try {
+    await persistNormalizedSensorRecord({ rawRecord: data || record, supabase });
+  } catch (normalizeError) {
+    console.warn('⚠️  Failed to normalize raw sensor record:', normalizeError.message);
   }
 
   return data || record;

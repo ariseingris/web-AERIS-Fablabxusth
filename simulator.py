@@ -1,6 +1,8 @@
 import paho.mqtt.client as mqtt
 import json, time, random, ssl
 from datetime import datetime, timezone
+import sys
+import os
 
 DEVICE_ID = "aeris_pod"
 
@@ -72,6 +74,8 @@ client.loop_start()
 
 print("🚀 Simulator running (smooth random-walk) — publishing every 5s...")
 print(f"👂 Listening for display-mode commands on {CONTROL_TOPIC}\n")
+print("Press Ctrl+C to exit.\n")
+
 
 while True:
     ts = datetime.now(timezone.utc).isoformat()
@@ -107,3 +111,4 @@ while True:
               f"CH4={raw['ch4']}  P={raw['pressure']}  Lux={raw['lux']}")
 
     time.sleep(5)
+    
