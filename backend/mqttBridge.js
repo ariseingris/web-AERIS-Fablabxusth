@@ -24,6 +24,7 @@
 const { WebSocketServer } = require('ws');
 const mqtt = require('mqtt');
 const { supabase } = require('./supabaseClient');
+const { ingestRawSensorEvent } = require('./rawSensorService');
 
 // Module-level status — readable by API without waiting for attachMqttBridge
 let _brokerStatus = 'disconnected';
@@ -238,10 +239,31 @@ module.exports = function attachMqttBridge(httpServer) {
     broadcast({ type: 'broker_status', status: 'error', message: e.message });
   });
 
-  mqttClient.on('message', (topic, payload) => {
+  mqttClient.on('message', async (topic, payload) => {
     const parts = topic.split('/');
+    const rawMessage = payload.toString();
+    const deviceIdFromTopic = (parts[0] === 'sgh-aeris' && parts[1] === 'gateway' && parts[2])
+      ? parts[2]
+      : (parts[0] === 'devices' && parts[1])
+        ? parts[1]
+        : null;
+
+    if (deviceIdFromTopic) {
+      try {
+        await ingestRawSensorEvent({
+          deviceId: deviceIdFromTopic,
+          topic,
+          payload: rawMessage,
+          receivedAt: new Date().toISOString(),
+          supabase,
+        });
+      } catch (error) {
+        console.warn('⚠️  Failed to ingest raw sensor record:', error.message);
+      }
+    }
+
     let parsed;
-    try { parsed = JSON.parse(payload.toString()); } catch { parsed = payload.toString(); }
+    try { parsed = JSON.parse(rawMessage); } catch { parsed = rawMessage; }
 
     // ── sgh-aeris/gateway/{imei8}/{kind} — Smart Greenhouse firmware protocol
     if (parts[0] === 'sgh-aeris' && parts[1] === 'gateway' && parts[2]) {
