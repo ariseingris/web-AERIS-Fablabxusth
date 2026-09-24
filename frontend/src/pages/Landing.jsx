@@ -596,11 +596,11 @@ export default function Landing() {
           </Reveal>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 24 }}>
             {[
-              // TODO: Replace with real team members
-              { name: 'Linh Nguyen', role: t('land_abt_role1', lang), initials: 'LN' },
-              { name: 'Minh Tran', role: t('land_abt_role2', lang), initials: 'MT' },
-              { name: 'An Pham', role: t('land_abt_role3', lang), initials: 'AP' },
-              { name: 'Hoa Le', role: t('land_abt_role4', lang), initials: 'HL' },
+              { name: 'Phạm Quang Nhật', role: t('land_abt_role1', lang), initials: 'PN' },
+              { name: 'Đinh Nhật Minh', role: t('land_abt_role2', lang), initials: 'NM' },
+              { name: 'Nguyễn Gia Bảo', role: t('land_abt_role3', lang), initials: 'GB' },
+              { name: 'Đoàn Gia Khánh', role: t('land_abt_role4', lang), initials: 'GK' },
+              { name: 'Nguyễn Đình Hợp', role: t('land_abt_role5', lang), initials: 'DH' },
             ].map(({ name, role, initials }, i) => (
               <Reveal key={name} delay={i * 60}>
                 <div className="card" style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '20px 24px' }}>
