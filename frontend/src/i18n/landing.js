@@ -64,10 +64,11 @@ export default {
     land_abt_stat3_lbl:  { en: 'Avg Latency',   vi: 'Độ trễ trung bình' },
     land_abt_stat4_lbl:  { en: 'App Rating',    vi: 'Đánh giá ứng dụng' },
     land_abt_team_lbl:   { en: 'The Team',      vi: 'Đội ngũ' },
-    land_abt_role1:      { en: 'Co-founder & CEO',   vi: 'Đồng sáng lập & CEO' },
-    land_abt_role2:      { en: 'CTO & Lead Eng.',    vi: 'CTO & Kỹ Sư Trưởng' },
-    land_abt_role3:      { en: 'Head of Design',     vi: 'Giám đốc thiết kế' },
-    land_abt_role4:      { en: 'Head of Product',    vi: 'Giám đốc sản phẩm' },
+    land_abt_role1:      { en: 'Strategic Lead', vi: 'Trưởng nhóm & Định hướng chiến lược' },
+    land_abt_role2:      { en: 'Product Design & Hardware', vi: 'Thiết kế sản phẩm & Phần cứng' },
+    land_abt_role3:      { en: 'Embedded Systems, AI & Software', vi: 'Embedded, AI & Kỹ thuật phần mềm' },
+    land_abt_role4:      { en: 'Operations & Community', vi: 'Vận hành & Cộng đồng' },
+    land_abt_role5:      { en: 'Marketing & Communications', vi: 'Marketing & Truyền thông' },
 
     // Privacy section
     land_priv_lbl:   { en: 'Privacy & Terms',    vi: 'Quyền Riêng Tư & Điều Khoản' },
