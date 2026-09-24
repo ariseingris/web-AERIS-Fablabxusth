@@ -65,7 +65,7 @@ export default {
     land_abt_stat4_lbl:  { en: 'App Rating',    vi: 'Đánh giá ứng dụng' },
     land_abt_team_lbl:   { en: 'The Team',      vi: 'Đội ngũ' },
     land_abt_role1:      { en: 'Strategic Lead', vi: 'Trưởng nhóm & Định hướng chiến lược' },
-    land_abt_role2:      { en: 'Product Design & Hardware', vi: 'Thiết kế sản phẩm & Phần cứng' },
+    land_abt_role2:      { en: 'Product Design (CATIA) & Hardware', vi: 'Thiết kế sản phẩm (CATIA) & Phần cứng' },
     land_abt_role3:      { en: 'Embedded Systems, AI & Software', vi: 'Embedded, AI & Kỹ thuật phần mềm' },
     land_abt_role4:      { en: 'Operations & Community', vi: 'Vận hành & Cộng đồng' },
     land_abt_role5:      { en: 'Marketing & Communications', vi: 'Marketing & Truyền thông' },
