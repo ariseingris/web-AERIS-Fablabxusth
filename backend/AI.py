@@ -15,7 +15,7 @@ from flask_cors import CORS
 app = Flask(__name__)
 CORS(app, resources={r"/ai/*": {"origins": os.environ.get("ALLOWED_ORIGIN", "http://localhost:5173")}})
 
-MODEL = os.environ.get('OLLAMA_MODEL', 'qwen3-coder:30b')  # Change to your model name if different
+MODEL = os.environ.get('OLLAMA_MODEL', 'gpt-oss:20b')  # Change to your model name if different
 START_TIME = time.time()
 MODEL_LOADED_AT = None
 MODEL_STATUS = "loading"  # "ready" | "error"
