@@ -111,3 +111,63 @@ test('ingestRawSensorEvent inserts a raw record for valid payloads', async () =>
   assert.equal(result.gas_raw, -1);
   assert.ok(calls.some(call => call[0] === 'insert'));
 });
+
+test('falls back to the canonical sensor_data table when raw_sensor_data is unavailable', async () => {
+  const calls = [];
+  const result = await ingestRawSensorEvent({
+    deviceId: 'dev-001',
+    topic: 'sgh-aeris/gateway/dev-001/sensors',
+    payload: '{"ts":30,"temp":27.2,"hum":55.6,"co2":2459,"lux":-999.0,"pressure":999.7,"gas":-1,"soil":85,"fan":1,"piston":0}',
+    receivedAt: '2026-06-06T12:00:00.000Z',
+    supabase: {
+      from(table) {
+        calls.push(['from', table]);
+        if (table === 'raw_sensor_data') {
+          return {
+            select() {
+              return {
+                eq() { return this; },
+                limit() {
+                  return Promise.resolve({ data: [], error: null });
+                },
+              };
+            },
+            insert() {
+              return {
+                select() {
+                  return {
+                    single() {
+                      return Promise.resolve({ data: null, error: { message: "Could not find the table 'public.raw_sensor_data' in the schema cache" } });
+                    },
+                  };
+                },
+              };
+            },
+          };
+        }
+
+        return {
+          insert(values) {
+            calls.push(['insert', table, values]);
+            return {
+              select() {
+                return {
+                  single() {
+                    return Promise.resolve({ data: values, error: null });
+                  },
+                };
+              },
+            };
+          },
+        };
+      },
+    },
+  });
+
+  assert.equal(result.device_id, 'dev-001');
+  assert.equal(result.timestamp, '2026-06-06T12:00:00.000Z');
+  assert.equal(result.temperature, 27.2);
+  assert.equal(result.humidity, 55.6);
+  assert.equal(result.temperature_raw, 27.2);
+  assert.ok(calls.some(call => call[1] === 'sensor_data'));
+});

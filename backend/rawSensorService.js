@@ -4,8 +4,9 @@ const RAW_SENSOR_FIELD_MAP = [
   ['temperature_raw', 'temp'],
   ['humidity_raw', 'hum'],
   ['co2_raw', 'co2'],
-  ['lux_raw', 'lux'],
+  ['ch4_raw', 'ch4'],
   ['pressure_raw', 'pressure'],
+  ['light_raw', 'lux'],
   ['gas_raw', 'gas'],
   ['soil_moisture_raw', 'soil'],
   ['fan_raw', 'fan'],
@@ -72,6 +73,49 @@ function classifyError(rawPayload) {
   }
 
   return { code: 'PARSE_ERROR', message: 'Malformed MQTT payload' };
+}
+
+function buildSensorDataRecord(record) {
+  if (!record || !record.device_id) {
+    throw new Error('device_id is required');
+  }
+
+  const payload = record.raw_payload && typeof record.raw_payload === 'object' && !Array.isArray(record.raw_payload)
+    ? record.raw_payload
+    : {};
+  const timestamp = record.recorded_at || record.received_at || record.timestamp || new Date().toISOString();
+
+  const sensorRecord = {
+    device_id: record.device_id,
+    timestamp,
+    temperature: toNumber(record.temperature_raw ?? payload.temp ?? null),
+    humidity: toNumber(record.humidity_raw ?? payload.hum ?? null),
+    co2: toNumber(record.co2_raw ?? payload.co2 ?? null),
+    ch4: toNumber(record.ch4_raw ?? payload.ch4 ?? null),
+    pressure: toNumber(record.pressure_raw ?? payload.pressure ?? null),
+    light: toNumber(record.light_raw ?? record.lux_raw ?? payload.lux ?? null),
+    soil: toNumber(record.soil_moisture_raw ?? payload.soil ?? null),
+    gas: toNumber(record.gas_raw ?? payload.gas ?? null),
+    fan: toNumber(record.fan_raw ?? payload.fan ?? null),
+    piston: toNumber(record.piston_raw ?? payload.piston ?? null),
+    temperature_raw: toNumber(record.temperature_raw ?? payload.temp ?? null),
+    humidity_raw: toNumber(record.humidity_raw ?? payload.hum ?? null),
+    co2_raw: toNumber(record.co2_raw ?? payload.co2 ?? null),
+    ch4_raw: toNumber(record.ch4_raw ?? payload.ch4 ?? null),
+    pressure_raw: toNumber(record.pressure_raw ?? payload.pressure ?? null),
+    light_raw: toNumber(record.light_raw ?? record.lux_raw ?? payload.lux ?? null),
+    gas_raw: toNumber(record.gas_raw ?? payload.gas ?? null),
+    soil_raw: toNumber(record.soil_moisture_raw ?? payload.soil ?? null),
+    fan_raw: toNumber(record.fan_raw ?? payload.fan ?? null),
+    piston_raw: toNumber(record.piston_raw ?? payload.piston ?? null),
+  };
+
+  return sensorRecord;
+}
+
+function isMissingLegacyTableError(error) {
+  const message = error && typeof error.message === 'string' ? error.message : '';
+  return /raw_sensor_data.*schema cache|Could not find the table.*raw_sensor_data/i.test(message);
 }
 
 function buildRawSensorRecord({
@@ -146,6 +190,27 @@ function buildRawSensorRecord({
   return record;
 }
 
+async function insertCanonicalSensorRecord({ supabase, record }) {
+  const sensorRecord = buildSensorDataRecord(record);
+  const { data, error } = await supabase
+    .from('sensor_data')
+    .insert(sensorRecord)
+    .select()
+    .single();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  try {
+    await persistNormalizedSensorRecord({ rawRecord: data || sensorRecord, supabase });
+  } catch (normalizeError) {
+    console.warn('⚠️  Failed to normalize canonical sensor record:', normalizeError.message);
+  }
+
+  return data || sensorRecord;
+}
+
 async function ingestRawSensorEvent({
   deviceId,
   topic,
@@ -168,58 +233,73 @@ async function ingestRawSensorEvent({
     return record;
   }
 
-  const sequence = record.sequence_number;
-  if (sequence !== null && sequence !== undefined && sequence !== '') {
-    const { data: existing, error: lookupError } = await supabase
-      .from('raw_sensor_data')
-      .select('id')
-      .eq('device_id', record.device_id)
-      .eq('sequence_number', sequence)
-      .limit(1);
-
-    if (!lookupError && Array.isArray(existing) && existing.length > 0) {
-      const duplicateRecord = {
-        ...record,
-        ingestion_status: 'duplicate',
-        error_code: 'DUPLICATE_MESSAGE',
-        error_message: 'Duplicate raw sensor event detected',
-      };
-
-      const { data, error } = await supabase
-        .from('raw_sensor_data')
-        .insert(duplicateRecord)
-        .select()
-        .single();
-
-      if (error) throw new Error(error.message);
-
-      try {
-        await persistNormalizedSensorRecord({ rawRecord: data || duplicateRecord, supabase });
-      } catch (normalizeError) {
-        console.warn('⚠️  Failed to normalize duplicate raw sensor record:', normalizeError.message);
-      }
-
-      return data || duplicateRecord;
-    }
-  }
-
-  const { data, error } = await supabase
-    .from('raw_sensor_data')
-    .insert(record)
-    .select()
-    .single();
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
   try {
-    await persistNormalizedSensorRecord({ rawRecord: data || record, supabase });
-  } catch (normalizeError) {
-    console.warn('⚠️  Failed to normalize raw sensor record:', normalizeError.message);
-  }
+    const sequence = record.sequence_number;
+    if (sequence !== null && sequence !== undefined && sequence !== '') {
+      const { data: existing, error: lookupError } = await supabase
+        .from('raw_sensor_data')
+        .select('id')
+        .eq('device_id', record.device_id)
+        .eq('sequence_number', sequence)
+        .limit(1);
 
-  return data || record;
+      if (!lookupError && Array.isArray(existing) && existing.length > 0) {
+        const duplicateRecord = {
+          ...record,
+          ingestion_status: 'duplicate',
+          error_code: 'DUPLICATE_MESSAGE',
+          error_message: 'Duplicate raw sensor event detected',
+        };
+
+        const { data, error } = await supabase
+          .from('raw_sensor_data')
+          .insert(duplicateRecord)
+          .select()
+          .single();
+
+        if (error) {
+          if (isMissingLegacyTableError(error)) {
+            return insertCanonicalSensorRecord({ supabase, record: duplicateRecord });
+          }
+          throw new Error(error.message);
+        }
+
+        try {
+          await persistNormalizedSensorRecord({ rawRecord: data || duplicateRecord, supabase });
+        } catch (normalizeError) {
+          console.warn('⚠️  Failed to normalize duplicate raw sensor record:', normalizeError.message);
+        }
+
+        return data || duplicateRecord;
+      }
+    }
+
+    const { data, error } = await supabase
+      .from('raw_sensor_data')
+      .insert(record)
+      .select()
+      .single();
+
+    if (error) {
+      if (isMissingLegacyTableError(error)) {
+        return insertCanonicalSensorRecord({ supabase, record });
+      }
+      throw new Error(error.message);
+    }
+
+    try {
+      await persistNormalizedSensorRecord({ rawRecord: data || record, supabase });
+    } catch (normalizeError) {
+      console.warn('⚠️  Failed to normalize raw sensor record:', normalizeError.message);
+    }
+
+    return data || record;
+  } catch (error) {
+    if (isMissingLegacyTableError(error)) {
+      return insertCanonicalSensorRecord({ supabase, record });
+    }
+    throw error;
+  }
 }
 
 function detectDuplicate({ deviceId, sequenceNumber, seen = new Set() }) {
